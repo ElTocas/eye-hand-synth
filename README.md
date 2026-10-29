@@ -1,7 +1,7 @@
 # Eye Hand Synth
 
 Interactive webcam instrument by Tommaso Martire.
-Blink = kick, hand drop = snare, pupil direction = synth note, fingers = waveform, pinch = filter.
+Blink = kick, hand drop = snare, pupil direction = soft synth note, fingers = tone, pinch = filter.
 After a blink, the open-eye and closed-eye crops are co-registered (skin around the eye only) and upscaled x4 with bicubic and with a super-resolution network.
 
 ## Run

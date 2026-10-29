@@ -34,6 +34,17 @@ button:focus-visible{outline:2px dashed #fff;outline-offset:3px}
 #err{color:#fff;margin:12px 0 0;font-size:14px;min-height:1.2em}
 .tools{position:fixed;right:max(16px,env(safe-area-inset-right,0px));top:calc(10px + env(safe-area-inset-top,0px));z-index:5;display:flex;gap:8px}
 .tools button{padding:8px 12px;font-size:12px}
+#help{position:fixed;left:max(16px,env(safe-area-inset-left,0px));top:calc(44px + env(safe-area-inset-top,0px));z-index:5;width:min(262px,86vw);display:flex;flex-direction:column;align-items:flex-start;gap:6px}
+#help>button{padding:6px 10px;font-size:11px;letter-spacing:.14em;text-transform:uppercase}
+#hbody{width:100%;background:rgba(7,7,8,.82);border:1px solid var(--line);max-height:calc(100vh - 220px);overflow:auto}
+#hbody[hidden]{display:none}
+.hr{padding:7px 10px;border-bottom:1px solid #222228;border-left:2px solid transparent;font-size:11px;line-height:1.4}
+.hr:last-child{border-bottom:0}
+.hr b{display:block;color:#fff;font-weight:400;letter-spacing:.12em;text-transform:uppercase;font-size:11px}
+.hr span{color:var(--dim)}
+.hr em{display:flex;align-items:center;gap:8px;font-style:normal;color:var(--ink);margin-top:3px}
+.hr em button{padding:2px 8px;font-size:11px;background:transparent;color:var(--ink);box-shadow:inset 0 0 0 1px var(--dim);clip-path:none;cursor:pointer}
+.hr.hit{border-left-color:#fff;background:#1b1b20}
 #cap{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(14px + env(safe-area-inset-bottom,0px));z-index:6;display:flex;gap:10px;align-items:center;background:rgba(7,7,8,.78);border:1px solid var(--line);padding:8px 12px}
 #cap canvas{width:96px;height:48px;image-rendering:pixelated;border:1px solid var(--line);background:#000}
 #cap small{display:block;color:var(--dim);font-size:10px;letter-spacing:.14em;text-transform:uppercase;text-align:center;margin-top:2px}
@@ -67,6 +78,7 @@ button:focus-visible{outline:2px dashed #fff;outline-offset:3px}
 <div class="top"><a href="../index.html">Tommaso Martire</a> &nbsp;/&nbsp; Eye Hand Synth</div>
 <div class="tools" id="tools" hidden><button class="ghost" id="recenter">Center gaze (C)</button><button class="ghost" id="stop">Stop</button></div>
 <div id="status" aria-live="off"></div>
+<div id="help" hidden><button class="ghost" id="hlp">Instructions</button><div id="hbody"></div></div>
 <div id="cap" hidden><div><canvas id="thO" width="160" height="80"></canvas><small>open</small></div><div><canvas id="thC" width="160" height="80"></canvas><small>closed</small></div><button id="dev" disabled>Blink once to capture</button></div>
 <div id="result" hidden><div class="rwrap"><div class="rhead"><h2>Eye photo</h2><button class="ghost" id="rclose">Back to the instrument</button></div><p class="lead" id="rlead"></p><div id="rbody"></div></div></div>
 
@@ -74,12 +86,7 @@ button:focus-visible{outline:2px dashed #fff;outline-offset:3px}
  <div class="card">
   <h1>Eye Hand Synth</h1>
   <p class="sub">An instrument you play with your face</p>
-  <dl>
-   <dt>Blink</dt><dd>Close both eyes and the kick drum hits.</dd>
-   <dt>Hand stab</dt><dd>Move a hand down fast, like hitting a drum, and the snare hits.</dd>
-   <dt>Pupils</dt><dd>Look in a direction to play the synth. Eight directions are eight notes of a minor scale. Look at the centre to stop.</dd>
-   <dt>Fingers</dt><dd>Pinch thumb and index to open or close the filter. The number of raised fingers changes the sound, from pure sine to a wide saw stack.</dd>
-  </dl>
+  <dl id="dl0"></dl>
   <div class="row"><button id="go">Open camera</button><button class="ghost" id="demo">Play with the mouse</button></div>
   <p id="err"></p>
   <p class="note">Blink once with a hand-held steady face and the page also keeps two small eye photos, one open and one closed. Press Develop to register them and compare bicubic upscaling with a super-resolution network. Your video never leaves this page. Face and hand tracking run locally in your browser, nothing is recorded or uploaded. Use headphones, and keep your face and hand well lit. Mouse mode: move to look, click to blink, space for snare, keys 1 to 5 for fingers, arrow up and down for the filter.</p>
@@ -110,23 +117,43 @@ function initAudio(){if(ac)return true;var AC=window.AudioContext||window.webkit
  shaper=ac.createWaveShaper();var c=new Float32Array(1024);for(var j=0;j<1024;j++){var x=j/512-1;c[j]=Math.tanh(2.6*x)}shaper.curve=c;
  var len=ac.sampleRate*1.8,ir=ac.createBuffer(2,len,ac.sampleRate);for(var ch=0;ch<2;ch++){var dd=ir.getChannelData(ch);for(var k=0;k<len;k++)dd[k]=(Math.random()*2-1)*Math.pow(1-k/len,3)}
  rev=ac.createConvolver();rev.buffer=ir;revG=ac.createGain();revG.gain.value=.28;rev.connect(revG);revG.connect(master);
- /* synth voice: 3 oscillators -> filter -> env -> dry + delay + reverb */
- var o1=ac.createOscillator(),o2=ac.createOscillator(),o3=ac.createOscillator(),f=ac.createBiquadFilter(),env=ac.createGain(),dl=ac.createDelay(1),fb=ac.createGain(),dw=ac.createGain();
- o1.type=o2.type='sawtooth';o3.type='sine';f.type='lowpass';f.Q.value=7;f.frequency.value=2000;env.gain.value=0;o1.frequency.value=o2.frequency.value=220;o3.frequency.value=110;
- dl.delayTime.value=.33;fb.gain.value=.38;dw.gain.value=.3;
- var g3=ac.createGain();g3.gain.value=0;o1.connect(f);o2.connect(f);o3.connect(g3);g3.connect(f);f.connect(env);env.connect(master);env.connect(dl);dl.connect(fb);fb.connect(dl);dl.connect(dw);dw.connect(master);env.connect(rev);
- o1.start();o2.start();o3.start();voice={o1:o1,o2:o2,o3:o3,g3:g3,f:f,env:env};return true}
+ /* soft pluck bus: dry + gentle delay + reverb */
+ var pb=ac.createGain(),dl=ac.createDelay(1),fb=ac.createGain(),dw=ac.createGain();dl.delayTime.value=.28;fb.gain.value=.3;dw.gain.value=.22;
+ pb.connect(master);pb.connect(dl);dl.connect(fb);fb.connect(dl);dl.connect(dw);dw.connect(master);pb.connect(rev);voice={bus:pb};return true}
 function kick(){if(!ac)return;var t=ac.currentTime,o=ac.createOscillator(),g=ac.createGain();o.type='sine';o.frequency.setValueAtTime(180,t);o.frequency.exponentialRampToValueAtTime(42,t+.11);g.gain.setValueAtTime(1.1,t);g.gain.exponentialRampToValueAtTime(.001,t+.4);o.connect(shaper);shaper.connect(g);g.connect(master);o.start(t);o.stop(t+.42)}
 function noiseHit(t,dur,type,freq,q,vol,dest){var s=ac.createBufferSource();s.buffer=noiseBuf;var f=ac.createBiquadFilter();f.type=type;f.frequency.value=freq;f.Q.value=q;var g=ac.createGain();g.gain.setValueAtTime(vol,t);g.gain.exponentialRampToValueAtTime(.001,t+dur);s.connect(f);f.connect(g);g.connect(master);if(dest)g.connect(dest);s.start(t);s.stop(t+dur+.02)}
 function snare(){if(!ac)return;var t=ac.currentTime,o=ac.createOscillator(),g=ac.createGain();o.type='triangle';o.frequency.setValueAtTime(250,t);o.frequency.exponentialRampToValueAtTime(130,t+.1);g.gain.setValueAtTime(.5,t);g.gain.exponentialRampToValueAtTime(.001,t+.16);o.connect(g);g.connect(master);o.start(t);o.stop(t+.18);noiseHit(t,.22,'bandpass',2200,.8,.6,rev);noiseHit(t,.1,'highpass',5200,.7,.25)}
-var WAVES=[{t:'sine',d:0,sub:0},{t:'triangle',d:4,sub:0},{t:'sawtooth',d:9,sub:0},{t:'square',d:12,sub:.5},{t:'sawtooth',d:20,sub:.6},{t:'sawtooth',d:34,sub:.9}];
-function applyVoice(){if(!voice)return;var t=ac.currentTime,w=WAVES[S.fingers];voice.o1.type=voice.o2.type=w.t;voice.o1.detune.setTargetAtTime(-w.d,t,.05);voice.o2.detune.setTargetAtTime(w.d,t,.05);voice.g3.gain.setTargetAtTime(w.sub*.6,t,.05);voice.f.frequency.setTargetAtTime(S.cutoff,t,.04)}
-function setNote(i){if(!voice)return;var t=ac.currentTime,f=NOTES[i];voice.o1.frequency.setTargetAtTime(f,t,.035);voice.o2.frequency.setTargetAtTime(f,t,.035);voice.o3.frequency.setTargetAtTime(f/2,t,.035)}
-function gate(on){if(!voice)return;var t=ac.currentTime;voice.env.gain.cancelScheduledValues(t);voice.env.gain.setTargetAtTime(on?.34:0,t,on?.02:.14)}
+var TIMB=[{dec:.7,p:[['sine',1,1,0]]},{dec:.6,p:[['triangle',1,1,0]]},{dec:.8,p:[['sine',1,.8,0],['sine',2,.3,0]]},{dec:1.2,p:[['sine',1,.8,0],['sine',2.76,.25,0],['sine',5.4,.08,0]]},{dec:.45,p:[['triangle',1,.8,0],['sine',4,.25,0]]},{dec:1,p:[['sine',1,.6,-6],['sine',1,.6,6],['sine',3,.12,0]]}];
+function pluck(i,vol,cut){if(!ac||!voice)return;var t=ac.currentTime,f=NOTES[i],w=TIMB[S.fingers]||TIMB[1];var out=ac.createGain(),fl=ac.createBiquadFilter();fl.type='lowpass';fl.Q.value=.7;fl.frequency.value=Math.max(500,Math.min(6000,cut||S.cutoff));
+ out.gain.setValueAtTime(.0001,t);out.gain.linearRampToValueAtTime(vol||.16,t+.012);out.gain.exponentialRampToValueAtTime(.0008,t+w.dec);
+ w.p.forEach(function(q){var o=ac.createOscillator(),g=ac.createGain();o.type=q[0];o.frequency.value=f*q[1];o.detune.value=q[3];g.gain.value=q[2];o.connect(g);g.connect(fl);o.start(t);o.stop(t+w.dec+.05)});
+ fl.connect(out);out.connect(voice.bus)}
+function tone(f,t0,dur,vol){var t=ac.currentTime+t0,o=ac.createOscillator(),g=ac.createGain();o.type='sine';o.frequency.value=f;g.gain.setValueAtTime(.0001,t);g.gain.linearRampToValueAtTime(vol,t+.01);g.gain.exponentialRampToValueAtTime(.0008,t+dur);o.connect(g);g.connect(master);g.connect(rev);o.start(t);o.stop(t+dur+.05)}
+function tick(n){if(!ac)return;noiseHit(ac.currentTime,.07,'bandpass',900+n*350,6,.14)}
+function chime(){if(!ac)return;tone(880,0,.5,.07);tone(1318.5,.12,.7,.06)}
+function applyVoice(){}
+function setNote(i){S.lastPluck=performance.now();pluck(i);hit('eyes')}
+function gate(on){}
+
+/* ---------- instructions ---------- */
+function prev(fn){initAudio();if(ac.state==='suspended')ac.resume();fn()}
+var HELP=[
+ ['kick','Blink','Close both eyes for a moment, facing the camera.','Kick drum',function(){kick()}],
+ ['snare','Hand drop','Raise a hand into view, then drop it quickly, as if tapping a table.','Snare',function(){snare()}],
+ ['eyes','Pupils','Head still, look up, down, left, right or diagonally: 8 directions, 8 soft notes. Centre is silence.','Soft pluck',function(){pluck(5)}],
+ ['fingers','Fingers','Hold your other hand still and show 0 to 5 fingers to change the tone: sine, triangle, warm, bell, kalimba, glass.','Wood tick, new tone',function(){tick(S.fingers);setTimeout(function(){pluck(5)},160)}],
+ ['pinch','Pinch','Thumb and index together: dark sound. Apart: bright sound.','Filter sweep',function(){pluck(5,.16,600);setTimeout(function(){pluck(5,.16,5000)},420)}]
+];
+function hit(k){var e=document.querySelector('#hbody [data-k="'+k+'"]');if(!e)return;e.classList.add('hit');clearTimeout(e._t);e._t=setTimeout(function(){e.classList.remove('hit')},320)}
+(function(){var h='',d='';HELP.forEach(function(r,i){h+='<div class="hr" data-k="'+r[0]+'"><b>'+r[1]+'</b><span>'+r[2]+'</span><em>Sound: '+r[3]+' <button data-i="'+i+'" aria-label="Preview '+r[1]+' sound">play</button></em></div>';d+='<dt>'+r[1]+'</dt><dd>'+r[2]+'</dd>'});
+ $('#hbody').innerHTML=h;$('#dl0').innerHTML=d;
+ $('#hbody').addEventListener('click',function(e){var b=e.target.closest('button[data-i]');if(b)prev(HELP[+b.dataset.i][4])});
+ $('#hlp').addEventListener('click',function(){$('#hbody').hidden=!$('#hbody').hidden});
+ if(innerWidth<700)$('#hbody').hidden=true})();
 
 /* ---------- events ---------- */
-function doKick(){var n=performance.now();if(n-S.lastKick<180)return;S.lastKick=n;kick();rings.push({x:W/2,y:H*.45,r:20,a:1,v:14});if(!reduce)S.flash=.5}
-function doSnare(){var n=performance.now();if(n-S.lastSnare<170)return;S.lastSnare=n;snare();for(var i=0;i<14;i++)slashes.push({y:Math.random()*H,h:1+Math.random()*3,l:.35+Math.random()*.2});if(!reduce)S.snFlash=.6}
+function doKick(){var n=performance.now();if(n-S.lastKick<180)return;S.lastKick=n;kick();hit('kick');rings.push({x:W/2,y:H*.45,r:20,a:1,v:14});if(!reduce)S.flash=.5}
+function doSnare(){var n=performance.now();if(n-S.lastSnare<170)return;S.lastSnare=n;snare();hit('snare');for(var i=0;i<14;i++)slashes.push({y:Math.random()*H,h:1+Math.random()*3,l:.35+Math.random()*.2});if(!reduce)S.snFlash=.6}
 
 /* ---------- face ---------- */
 var RE=[33,7,163,144,145,153,154,155,133,173,157,158,159,160,161,246],LE=[362,382,381,380,374,373,390,249,263,466,388,387,386,385,384,398];
@@ -151,7 +178,8 @@ function onFace(res){var lms=res.multiFaceLandmarks;if(!lms||!lms.length){S.face
   S.gx+=(gx-S.gx)*.45;S.gy+=(gy-S.gy)*.45;updateGaze();S.trail.push([lm[468].x,lm[468].y]);if(S.trail.length>28)S.trail.shift()}}
 function updateGaze(){S.mag=Math.hypot(S.gx,S.gy);var on=S.gate?S.mag>.38:S.mag>.5;
  if(on){var a=Math.atan2(S.gx,S.gy);if(a<0)a+=6.2832;var sec=Math.floor((a+.3927)/.7854)%8;if(sec!==S.sector){S.sector=sec;setNote(sec)}}
- if(on!==S.gate){S.gate=on;gate(on);if(!on)S.sector=-1}}
+ if(on!==S.gate){S.gate=on;gate(on);if(!on)S.sector=-1}
+ if(on&&S.sector>=0&&performance.now()-(S.lastPluck||0)>900)setNote(S.sector)}
 function recenter(){S.ox=S.rawx;S.oy=S.rawy;S.gx=S.gy=0;S.calN=30}
 
 /* ---------- hands ---------- */
@@ -160,10 +188,10 @@ var prevW=[];
 function onHands(res){var hs=res.multiHandLandmarks||[];S.hands=hs;var now=performance.now();
  hs.forEach(function(h,i){var y=h[0].y,p=prevW[i];if(p){var dt=(now-p.t)/1000;if(dt>0){var v=(y-p.y)/dt;p.v=p.v*.5+v*.5;if(p.v>1.35&&now-S.lastSnare>170)doSnare()}p.y=y;p.t=now}else prevW[i]={y:y,t:now,v:0}});
  prevW.length=hs.length;
- if(hs.length){var h=hs[0],sz=d2(h[0],h[9])||1,pi=d2(h[4],h[8])/sz;S.pinch=pi;
-  var cut=200*Math.pow(30,Math.max(0,Math.min(1,(pi-.12)/.9)));S.cutoff+=(cut-S.cutoff)*.5;
+ if(hs.length){var bi=0;hs.forEach(function(_,i){if(Math.abs(prevW[i].v)<Math.abs(prevW[bi].v))bi=i});if(Math.abs(prevW[bi].v)<.7){var h=hs[bi],sz=d2(h[0],h[9])||1,pi=d2(h[4],h[8])/sz;S.pinch=pi;
+  var cut=500*Math.pow(12,Math.max(0,Math.min(1,(pi-.12)/.9)));S.cutoff+=(cut-S.cutoff)*.5;
   var n=0,tips=[8,12,16,20],pips=[6,10,14,18];for(var k=0;k<4;k++)if(d2(h[tips[k]],h[0])>d2(h[pips[k]],h[0])*1.12)n++;if(d2(h[4],h[17])>d2(h[3],h[17])*1.18)n++;
-  if(n!==S.fingers){S.fingers=n;}applyVoice()}}
+  if(n!==S.fingers){S.fingers=n;tick(n);hit('fingers')}}}}
 
 /* ---------- camera loop ---------- */
 var video=document.createElement('video');video.playsInline=true;video.muted=true;video.setAttribute('playsinline','');video.setAttribute('muted','');video.style.cssText='position:fixed;left:0;top:0;width:2px;height:2px;opacity:.01;pointer-events:none';document.body.appendChild(video);var starting=false;var STAGE='';
@@ -198,7 +226,7 @@ cv.addEventListener('pointermove',function(e){if(S.mode!=='mouse')return;S.gx=Ma
 cv.addEventListener('pointerdown',function(){if(S.mode==='mouse'){doKick();S.closed=true;setTimeout(function(){S.closed=false},160)}});
 addEventListener('keydown',function(e){var k=e.key;if(k==='c'||k==='C'){if(S.mode==='cam')recenter();return}
  if(S.mode!=='mouse')return;
- if(k===' '){e.preventDefault();doSnare()}else if(k>='1'&&k<='5'){S.fingers=+k;applyVoice()}else if(k==='0'){S.fingers=0;applyVoice()}
+ if(k===' '){e.preventDefault();doSnare()}else if(k>='1'&&k<='5'){S.fingers=+k;tick(S.fingers);hit('fingers')}else if(k==='0'){S.fingers=0;tick(0);hit('fingers')}
  else if(k==='ArrowUp'){e.preventDefault();S.cutoff=Math.min(7000,S.cutoff*1.25);applyVoice()}else if(k==='ArrowDown'){e.preventDefault();S.cutoff=Math.max(200,S.cutoff/1.25);applyVoice()}});
 
 
@@ -209,7 +237,7 @@ function cropEye(lm){var vw=S.vw,vh=S.vh,p0x=lm[33].x*vw,p0y=lm[33].y*vh,p1x=lm[
  var k=.6*CROP.OW/w,c=Math.cos(th),s=Math.sin(th),e=.2*CROP.OW-k*(c*p0x+s*p0y),f=.5*CROP.OH-k*(-s*p0x+c*p0y),x=CROP.ctx;
  S.crop={k:k,c:c,s:s,p0x:p0x,p0y:p0y};x.setTransform(1,0,0,1,0,0);x.clearRect(0,0,CROP.OW,CROP.OH);x.setTransform(k*c,-k*s,k*s,k*c,e,f);x.imageSmoothingQuality='high';x.drawImage(video,0,0);x.setTransform(1,0,0,1,0,0);return x.getImageData(0,0,CROP.OW,CROP.OH)}
 function putImg(cv,img){cv.width=img.width;cv.height=img.height;cv.getContext('2d').putImageData(img,0,0)}
-function showThumbs(){$('#cap').hidden=false;putImg($('#thO'),S.cap.open);putImg($('#thC'),S.cap.closed);var b=$('#dev');b.disabled=false;b.textContent='Develop eye photo'}
+function showThumbs(){chime();$('#cap').hidden=false;putImg($('#thO'),S.cap.open);putImg($('#thC'),S.cap.closed);var b=$('#dev');b.disabled=false;b.textContent='Develop eye photo'}
 function cropCornersScreen(sc,ox,oy){var c=S.crop;if(!c||!CROP.OW)return null;var pts=[[0,0],[CROP.OW,0],[CROP.OW,CROP.OH],[0,CROP.OH]];return pts.map(function(p){var u=(p[0]-.2*CROP.OW)/c.k,v=(p[1]-.5*CROP.OH)/c.k,x=c.p0x+c.c*u-c.s*v,y=c.p0y+c.s*u+c.c*v;return [(1-x/S.vw)*S.vw*sc+ox,y*sc+oy]})}
 
 /* ---------- registration (translation, skin around the eye only) ---------- */
@@ -320,6 +348,7 @@ function draw(){cx.fillStyle='#070708';cx.fillRect(0,0,W,H);
   for(var s=0;s<8;s++){var a=s*.7854,x1=cx0+Math.sin(a)*R*.62,y1=cy0-Math.cos(a)*R*.62,x2=cx0+Math.sin(a)*R,y2=cy0-Math.cos(a)*R;cx.strokeStyle=s===S.sector?'#fff':'rgba(235,235,240,.35)';cx.lineWidth=s===S.sector?4:1.5;cx.beginPath();cx.moveTo(x1,y1);cx.lineTo(x2,y2);cx.stroke();cx.fillStyle=s===S.sector?'#fff':'rgba(235,235,240,.55)';cx.font='11px "Share Tech Mono",monospace';cx.textAlign='center';cx.fillText(NAMES[s],cx0+Math.sin(a)*(R+16),cy0-Math.cos(a)*(R+16)+4)}
   cx.textAlign='left';cx.fillStyle='#fff';cx.beginPath();cx.arc(cx0+S.gx*R*.8,cy0-S.gy*R*.8,5,0,6.283);cx.fill()}
  /* status */
+ $('#help').hidden=(S.mode==='idle');
  var st=$('#status');if(S.mode==='idle')st.textContent='';else st.innerHTML='eyes <b>'+(S.closed?'closed':'open')+'</b> &nbsp; note <b>'+(S.sector>=0?NAMES[S.sector]:'-')+'</b> &nbsp; fingers <b>'+S.fingers+'</b> &nbsp; filter <b>'+Math.round(S.cutoff)+' Hz</b>'+(S.mode==='cam'&&!S.face?' &nbsp; <b>no face found</b>':'');
  requestAnimationFrame(draw)}
 requestAnimationFrame(draw);
