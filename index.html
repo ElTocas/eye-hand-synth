@@ -9,7 +9,7 @@
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Black+Ops+One&family=Share+Tech+Mono&display=swap">
 <style>
 /* Layout: one full-screen canvas (mirrored webcam in grey, landmarks and pulses drawn on top), a small HUD, a start panel. Grey only. */
-:root{--bg:#070708;--ink:#ececee;--dim:#8d8d93;--line:#3a3a40;--disp:'Black Ops One',Impact,sans-serif;--mono:'Share Tech Mono','Courier New',monospace;color-scheme:dark}
+:root{--bg:#070708;--ink:#ececee;--dim:#b6b6bd;--line:#3a3a40;--disp:'Black Ops One',Impact,sans-serif;--mono:'Share Tech Mono','Courier New',monospace;color-scheme:dark}
 *{box-sizing:border-box}
 [hidden]{display:none!important}
 html,body{height:100%;margin:0;background:var(--bg);color:var(--ink);font-family:var(--mono);overflow:hidden}
@@ -36,14 +36,14 @@ button:focus-visible{outline:2px dashed #fff;outline-offset:3px}
 .tools button{padding:8px 12px;font-size:12px}
 #help{position:fixed;left:max(16px,env(safe-area-inset-left,0px));top:calc(44px + env(safe-area-inset-top,0px));z-index:5;width:min(262px,86vw);display:flex;flex-direction:column;align-items:flex-start;gap:6px}
 #help>button{padding:6px 10px;font-size:11px;letter-spacing:.14em;text-transform:uppercase}
-#hbody{width:100%;background:rgba(7,7,8,.82);border:1px solid var(--line);max-height:calc(100vh - 200px);overflow:auto}
+#hbody{width:100%;background:rgba(7,7,8,.92);border:1px solid #5a5a62;max-height:calc(100vh - 200px);overflow:auto}
 #hbody[hidden]{display:none}
-.hr{padding:6px 10px;border-bottom:1px solid #222228;border-left:2px solid transparent;font-size:11px;line-height:1.4}
+.hr{padding:6px 10px;border-bottom:1px solid #34343a;border-left:2px solid transparent;font-size:11px;line-height:1.4}
 .hr:last-child{border-bottom:0}
 .hr b{display:flex;align-items:center;gap:6px;color:#fff;font-weight:400;letter-spacing:.1em;text-transform:uppercase;font-size:11px}
 .hr b i{font-style:normal;color:var(--dim);letter-spacing:.04em;text-transform:none;flex:1}
 .hr b button{padding:1px 7px;font-size:10px;background:transparent;color:var(--ink);box-shadow:inset 0 0 0 1px var(--dim);clip-path:none;cursor:pointer}
-.hr span{color:var(--dim)}
+.hr span{color:#cfcfd5}
 .hr em{display:flex;align-items:center;gap:8px;font-style:normal;color:var(--ink);margin-top:3px}
 .hr em button{padding:2px 8px;font-size:11px;background:transparent;color:var(--ink);box-shadow:inset 0 0 0 1px var(--dim);clip-path:none;cursor:pointer}
 .hr.hit{border-left-color:#fff;background:#1b1b20}
@@ -115,7 +115,7 @@ var NOTES=[220,261.63,293.66,329.63,392,440,523.25,587.33],NAMES=['A3','C4','D4'
 var rings=[],slashes=[];
 
 /* ---------- audio ---------- */
-var ac=null,master,rev,revG,ana,noiseBuf,shaper,voice=null;
+var ac=null,master,rev,revG,ana,noiseBuf,shaper,voice=null,AC2={};
 function initAudio(){if(ac)return true;var AC=window.AudioContext||window.webkitAudioContext;if(!AC)return false;ac=new AC();
  var comp=ac.createDynamicsCompressor();comp.threshold.value=-12;comp.ratio.value=6;master=ac.createGain();master.gain.value=.9;ana=ac.createAnalyser();ana.fftSize=1024;master.connect(comp);comp.connect(ana);ana.connect(ac.destination);window.vdest=ac.createMediaStreamDestination();comp.connect(window.vdest);
  var n=ac.sampleRate,b=ac.createBuffer(1,n,n),d=b.getChannelData(0);for(var i=0;i<n;i++)d[i]=Math.random()*2-1;noiseBuf=b;
@@ -124,7 +124,11 @@ function initAudio(){if(ac)return true;var AC=window.AudioContext||window.webkit
  rev=ac.createConvolver();rev.buffer=ir;revG=ac.createGain();revG.gain.value=.28;rev.connect(revG);revG.connect(master);
  /* soft pluck bus: dry + gentle delay + reverb */
  var pb=ac.createGain(),dl=ac.createDelay(1),fb=ac.createGain(),dw=ac.createGain();dl.delayTime.value=.28;fb.gain.value=.3;dw.gain.value=.22;
- pb.connect(master);pb.connect(dl);dl.connect(fb);fb.connect(dl);dl.connect(dw);dw.connect(master);pb.connect(rev);voice={bus:pb};return true}
+ pb.connect(master);pb.connect(dl);dl.connect(fb);fb.connect(dl);dl.connect(dw);dw.connect(master);pb.connect(rev);voice={bus:pb};
+ /* two acid voices, one per hand: saw -> resonant lowpass (per note) -> dry + drive -> delay and reverb */
+ AC2={};['R','L'].forEach(function(sd){var inp=ac.createGain(),dry=ac.createGain(),wet=ac.createGain(),sh=ac.createWaveShaper(),cv=new Float32Array(1024);for(var j=0;j<1024;j++){var xx=j/512-1;cv[j]=Math.tanh(5*xx)}sh.curve=cv;sh.oversample='2x';
+  var out=ac.createGain(),snd=ac.createGain();out.gain.value=sd==='R'?.5:.62;snd.gain.value=.22;inp.connect(dry);inp.connect(sh);sh.connect(wet);dry.connect(out);wet.connect(out);out.connect(master);out.connect(snd);snd.connect(dl);out.connect(rev);AC2[sd]={inp:inp,dry:dry,wet:wet}});
+ return true}
 function kick(t0){if(!ac)return;var t=t0||ac.currentTime,o=ac.createOscillator(),g=ac.createGain();o.type='sine';o.frequency.setValueAtTime(180,t);o.frequency.exponentialRampToValueAtTime(42,t+.11);g.gain.setValueAtTime(1.1,t);g.gain.exponentialRampToValueAtTime(.001,t+.4);o.connect(shaper);shaper.connect(g);g.connect(master);o.start(t);o.stop(t+.42)}
 function noiseHit(t,dur,type,freq,q,vol,dest){var s=ac.createBufferSource();s.buffer=noiseBuf;var f=ac.createBiquadFilter();f.type=type;f.frequency.value=freq;f.Q.value=q;var g=ac.createGain();g.gain.setValueAtTime(vol,t);g.gain.exponentialRampToValueAtTime(.001,t+dur);s.connect(f);f.connect(g);g.connect(master);if(dest)g.connect(dest);s.start(t);s.stop(t+dur+.02)}
 function snare(t0){if(!ac)return;var t=t0||ac.currentTime,o=ac.createOscillator(),g=ac.createGain();o.type='triangle';o.frequency.setValueAtTime(250,t);o.frequency.exponentialRampToValueAtTime(130,t+.1);g.gain.setValueAtTime(.5,t);g.gain.exponentialRampToValueAtTime(.001,t+.16);o.connect(g);g.connect(master);o.start(t);o.stop(t+.18);noiseHit(t,.22,'bandpass',2200,.8,.6,rev);noiseHit(t,.1,'highpass',5200,.7,.25)}
@@ -132,7 +136,7 @@ function hat(t0,v){if(!ac)return;var t=t0||ac.currentTime;noiseHit(t,.05,'highpa
 function clap(t0){if(!ac)return;var t=t0||ac.currentTime;[0,.014,.03].forEach(function(d,i){noiseHit(t+d,i==2?.16:.03,'bandpass',1500,1.1,.5,i==2?rev:null)})}
 function tom(t0){if(!ac)return;var t=t0||ac.currentTime,o=ac.createOscillator(),g=ac.createGain();o.type='sine';o.frequency.setValueAtTime(190,t);o.frequency.exponentialRampToValueAtTime(95,t+.2);g.gain.setValueAtTime(.8,t);g.gain.exponentialRampToValueAtTime(.001,t+.34);o.connect(g);g.connect(master);o.start(t);o.stop(t+.36)}
 var TIMB=[{dec:.7,p:[['sine',1,1,0]]},{dec:.6,p:[['triangle',1,1,0]]},{dec:.8,p:[['sine',1,.8,0],['sine',2,.3,0]]},{dec:1.2,p:[['sine',1,.8,0],['sine',2.76,.25,0],['sine',5.4,.08,0]]},{dec:.45,p:[['triangle',1,.8,0],['sine',4,.25,0]]},{dec:1,p:[['sine',1,.6,-6],['sine',1,.6,6],['sine',3,.12,0]]}];
-function pluck(i,vol,cut,t0){if(!ac||!voice)return;var t=t0||ac.currentTime,f=NOTES[i],w=TIMB[S.fingers]||TIMB[1];var out=ac.createGain(),fl=ac.createBiquadFilter();fl.type='lowpass';fl.Q.value=.7;fl.frequency.value=Math.max(500,Math.min(6000,cut||S.cutoff));
+function pluck(i,vol,cut,t0){if(!ac||!voice)return;var t=t0||ac.currentTime,f=NOTES[i],w=TIMB[4];var out=ac.createGain(),fl=ac.createBiquadFilter();fl.type='lowpass';fl.Q.value=.7;fl.frequency.value=Math.max(500,Math.min(6000,cut||S.cutoff));
  out.gain.setValueAtTime(.0001,t);out.gain.linearRampToValueAtTime(vol||.16,t+.012);out.gain.exponentialRampToValueAtTime(.0008,t+w.dec);
  w.p.forEach(function(q){var o=ac.createOscillator(),g=ac.createGain();o.type=q[0];o.frequency.value=f*q[1];o.detune.value=q[3];g.gain.value=q[2];o.connect(g);g.connect(fl);o.start(t);o.stop(t+w.dec+.05)});
  fl.connect(out);out.connect(voice.bus)}
@@ -140,7 +144,21 @@ function tone(f,t0,dur,vol){var t=ac.currentTime+t0,o=ac.createOscillator(),g=ac
 function bass(f,t,dur){var o=ac.createOscillator(),g=ac.createGain(),fl=ac.createBiquadFilter();o.type='triangle';o.frequency.value=f;fl.type='lowpass';fl.frequency.value=220;g.gain.setValueAtTime(.0001,t);g.gain.linearRampToValueAtTime(.5,t+.02);g.gain.exponentialRampToValueAtTime(.001,t+dur);o.connect(fl);fl.connect(g);g.connect(master);o.start(t);o.stop(t+dur+.05)}
 function tick(n){if(!ac)return;noiseHit(ac.currentTime,.07,'bandpass',900+n*350,6,.14)}
 function chime(){if(!ac)return;tone(880,0,.5,.07);tone(1318.5,.12,.7,.06)}
-function applyVoice(){}
+var PENT=[0,3,5,7,10];
+function acidNote(sd,deg,t,dur,acid,accent){if(!ac||!AC2[sd])return;var f=(sd==='R'?220:55)*Math.pow(2,PENT[deg-1]/12),o=ac.createOscillator(),fl=ac.createBiquadFilter(),g=ac.createGain(),bus=AC2[sd];
+ o.type='sawtooth';o.frequency.value=f;fl.type='lowpass';fl.Q.value=1.5+acid*17;
+ var base=(sd==='R'?500:180)+acid*500,peak=base+acid*(sd==='R'?5200:3200)*(accent?1.35:1)+500;fl.frequency.setValueAtTime(peak,t);fl.frequency.exponentialRampToValueAtTime(base,t+.1+.2*(1-acid));
+ g.gain.setValueAtTime(.0001,t);g.gain.linearRampToValueAtTime(accent?.5:.34,t+.004);g.gain.setTargetAtTime(.0001,t+dur*.7,.03);
+ var tg=bus.dry.gain,tw=bus.wet.gain;tg.setTargetAtTime(1-acid*.75,t,.02);tw.setTargetAtTime(acid*.9,t,.02);
+ o.connect(fl);fl.connect(g);g.connect(bus.inp);o.start(t);o.stop(t+dur+.2)}
+var SEQ={bpm:100,step:0,next:0,timer:0,pat:{R:[1,0,1,1,0,1,1,0,1,0,1,1,0,1,1,1],L:[1,0,0,1,0,0,1,0,1,0,0,1,0,0,1,0]}};
+function seqTick(){if(!ac)return;var st=60/SEQ.bpm/4,now=performance.now();
+ while(SEQ.next<ac.currentTime+.12){var k=SEQ.step%16;['R','L'].forEach(function(sd){var h=HS[sd];if(h&&now-h.seen<500&&h.deg>0&&SEQ.pat[sd][k]){acidNote(sd,h.deg,Math.max(SEQ.next,ac.currentTime),st*.9,h.acid,k%4===0||k===10);hit(sd==='R'?'right':'left')}});
+  SEQ.next+=st;SEQ.step++}}
+function startSeq(){if(SEQ.timer||!ac)return;SEQ.next=ac.currentTime+.08;SEQ.step=0;SEQ.timer=setInterval(seqTick,25)}
+function stopSeq(){clearInterval(SEQ.timer);SEQ.timer=0}
+var HS={R:{deg:0,acid:0,seen:0,cand:0,cnt:0},L:{deg:0,acid:0,seen:0,cand:0,cnt:0}};
+function applyVoice(){startSeq()}
 function setNote(i){S.lastPluck=performance.now();pluck(i);hit('eyes')}
 function gate(on){}
 
@@ -150,12 +168,11 @@ var HELP=[
  ['kick','Both eyes','kick','Close both eyes for a moment.',function(){kick()}],
  ['hat','Left wink','hi-hat','Close only your left eye.',function(){hat()}],
  ['clap','Right wink','clap','Close only your right eye.',function(){clap()}],
- ['snare','Right hand drop','snare','Lift your right hand into view, then drop it fast, like tapping a table.',function(){snare()}],
- ['tom','Left hand drop','tom','Same with your left hand.',function(){tom()}],
  ['eyes','Pupils','soft note','Head still, look up, down, left, right or diagonally: 8 directions, 8 notes. Centre is silence.',function(){pluck(5)}],
- ['fingers','Right hand fingers','tick','Hold your right hand still and show 0 to 5 fingers: sine, triangle, warm, bell, kalimba, glass.',function(){tick(S.fingers);setTimeout(function(){pluck(5)},160)}],
- ['pinch','Left hand pinch','filter','Thumb and index of your left hand together: dark. Apart: bright. One hand alone does both.',function(){pluck(5,.16,600);setTimeout(function(){pluck(5,.16,5000)},420)}]
+ ['right','Right hand','acid lead','Show 1 to 5 fingers: five notes. A fist is silence. The wider you open the hand, the more acid it gets: resonance, bite, drive.',function(){HS.R.deg=3;acidStep('R',3,.2);setTimeout(function(){acidStep('R',3,.9)},330)}],
+ ['left','Left hand','acid bass','Same with the left hand, on a deep bass line. Both hands play together, in time.',function(){acidStep('L',2,.2);setTimeout(function(){acidStep('L',2,.9)},330)}]
 ];
+function acidStep(sd,deg,a){var t=ac.currentTime+.02;acidNote(sd,deg,t,.28,a,true);acidNote(sd,deg,t+.3,.28,a,false)}
 function hit(k){var e=document.querySelector('#hbody [data-k="'+k+'"]');if(!e)return;e.classList.add('hit');clearTimeout(e._t);e._t=setTimeout(function(){e.classList.remove('hit')},320)}
 (function(){var h='',d='';HELP.forEach(function(r,i){h+='<div class="hr" data-k="'+r[0]+'"><b>'+r[1]+' <i>'+r[2]+'</i><button data-i="'+i+'" aria-label="Preview '+r[2]+' sound">play</button></b><span>'+r[3]+'</span></div>';d+='<dt>'+r[1]+'</dt><dd>'+r[3]+'</dd>'});
  $('#hbody').innerHTML=h;$('#dl0').innerHTML=d;
@@ -203,20 +220,16 @@ function recenter(){S.ox=S.rawx;S.oy=S.rawy;S.gx=S.gy=0;S.calN=30}
 
 /* ---------- hands ---------- */
 var HC=[[0,1],[1,2],[2,3],[3,4],[0,5],[5,6],[6,7],[7,8],[5,9],[9,10],[10,11],[11,12],[9,13],[13,14],[14,15],[15,16],[13,17],[0,17],[17,18],[18,19],[19,20]];
-var PH={R:{hist:[],last:0,drop:0,move:9},L:{hist:[],last:0,drop:0,move:9}};
 function onHands(res){var hs=res.multiHandLandmarks||[],hd=res.multiHandedness||[];S.hands=hs;var now=performance.now();
  /* which hand is which, from the user's point of view. The video is not mirrored here, so the user's right hand is on the image left */
  var side=hs.map(function(h,i){if(hs.length>1)return h[0].x<hs[1-i][0].x?'R':'L';var lb=hd[0]&&hd[0].label;return lb==='Left'?'R':'L'});
- S.handSide=side;var best=0,H={};
- ['R','L'].forEach(function(sd){var p=PH[sd];while((p.hist.length>3&&now-p.hist[0][0]>420)||(p.hist.length&&now-p.hist[0][0]>1500))p.hist.shift();if(side.indexOf(sd)<0){p.move=9;p.drop=0}});
- hs.forEach(function(h,i){var sd=side[i],p=PH[sd],y=(h[0].y+h[9].y)/2;H[sd]=h;
-  p.hist.push([now,y]);var mn=9,mx=0;p.hist.forEach(function(q){if(q[1]<mn)mn=q[1];if(q[1]>mx)mx=q[1]});p.drop=y-mn;p.move=Math.max(y-mn,mx-y);if(p.drop>best)best=p.drop;
-  if(p.move<.04)p.armed=true;if(p.drop>.075&&p.armed!==false&&now-p.last>260){p.armed=false;p.last=now;p.hist=[[now,y]];if(sd==='R')doSnare();else doTom()}});
- S.hd=best;if(hs.length===1){H.R=H.R||hs[0];H.L=H.L||hs[0];var o=side[0]==='R'?'L':'R';PH[o].move=PH[side[0]].move}
- function still(sd){return H[sd]&&PH[sd].move<.05}
- if(still('R')){var h=H.R,n=0,tips=[8,12,16,20],pips=[6,10,14,18];for(var k=0;k<4;k++)if(d2(h[tips[k]],h[0])>d2(h[pips[k]],h[0])*1.12)n++;if(d2(h[4],h[17])>d2(h[3],h[17])*1.18)n++;
-  if(n!==S.fingers){S.fingers=n;tick(n);hit('fingers')}}
- if(still('L')){var g=H.L,sz=d2(g[0],g[9])||1,pi=d2(g[4],g[8])/sz;S.pinch=pi;var cut=500*Math.pow(12,Math.max(0,Math.min(1,(pi-.12)/.9)));S.cutoff+=(cut-S.cutoff)*.5;hit('pinch')}}
+ S.handSide=side;
+ hs.forEach(function(h,i){var st=HS[side[i]],sz=d2(h[0],h[9])||1,n=0,tips=[8,12,16,20],pips=[6,10,14,18];
+  for(var k=0;k<4;k++)if(d2(h[tips[k]],h[0])>d2(h[pips[k]],h[0])*1.12)n++;if(d2(h[4],h[17])>d2(h[3],h[17])*1.18)n++;
+  if(st.cand===n)st.cnt++;else{st.cand=n;st.cnt=1}if(st.cnt>=2&&st.deg!==n){st.deg=n;if(n>0)tick(n)}
+  var m=0;[4,8,12,16,20].forEach(function(t){m+=d2(h[t],h[9])});m/=5*sz;
+  var a=Math.max(0,Math.min(1,(m-.75)/.8));st.acid+=(a-st.acid)*.5;st.seen=now});
+ startSeq()}
 
 /* ---------- camera loop ---------- */
 var video=document.createElement('video');video.playsInline=true;video.muted=true;video.setAttribute('playsinline','');video.setAttribute('muted','');video.style.cssText='position:fixed;left:0;top:0;width:2px;height:2px;opacity:.01;pointer-events:none';document.body.appendChild(video);var starting=false;var STAGE='';
@@ -240,7 +253,7 @@ async function startCam(){if(starting||running)return;starting=true;if(location.
  catch(e){err.textContent=(e&&e.name==='NotAllowedError')?'Camera permission was denied. Allow it in the address bar, or use the mouse mode.':'Could not start ['+STAGE+' | '+location.protocol+' | '+navigator.userAgent.slice(-60)+']: '+(e&&e.message?e.message:e)+' '+String(e&&e.stack||'').split('\n').slice(0,3).join(' / ');$('#go').textContent='Open camera'}
  starting=false}
 async function loop(){if(!running)return;if(video.readyState>=2){try{await face.send({image:video});if(hands)await hands.send({image:video})}catch(e){}}requestAnimationFrame(loop)}
-function stopAll(){running=false;if(stream)stream.getTracks().forEach(function(t){t.stop()});stream=null;gate(false);S.mode='idle';S.gate=false;S.sector=-1;S.lm=null;S.hands=[];PH.R.hist=[];PH.L.hist=[];$('#panel').hidden=false;$('#tools').hidden=true;$('#go').textContent='Open camera'}
+function stopAll(){running=false;stopSeq();HS.R.deg=HS.L.deg=0;if(stream)stream.getTracks().forEach(function(t){t.stop()});stream=null;gate(false);S.mode='idle';S.gate=false;S.sector=-1;S.lm=null;S.hands=[];PH.R.hist=[];PH.L.hist=[];$('#panel').hidden=false;$('#tools').hidden=true;$('#go').textContent='Open camera'}
 $('#go').addEventListener('click',startCam);
 $('#stop').addEventListener('click',stopAll);
 $('#recenter').addEventListener('click',recenter);
@@ -251,8 +264,9 @@ cv.addEventListener('pointermove',function(e){if(S.mode!=='mouse')return;S.gx=Ma
 cv.addEventListener('pointerdown',function(){if(S.mode==='mouse'){doKick();S.closed=true;setTimeout(function(){S.closed=false},160)}});
 addEventListener('keydown',function(e){var k=e.key;if(k==='c'||k==='C'){if(S.mode==='cam')recenter();return}
  if(S.mode!=='mouse')return;
- if(k===' '){e.preventDefault();doSnare()}else if(k>='1'&&k<='5'){S.fingers=+k;tick(S.fingers);hit('fingers')}else if(k==='0'){S.fingers=0;tick(0);hit('fingers')}
- else if(k==='ArrowUp'){e.preventDefault();S.cutoff=Math.min(7000,S.cutoff*1.25);applyVoice()}else if(k==='ArrowDown'){e.preventDefault();S.cutoff=Math.max(200,S.cutoff/1.25);applyVoice()}});
+ function setH(sd,d){var st=HS[sd];st.deg=d;st.seen=performance.now()+36e5;if(st.acid===0)st.acid=.4;startSeq()}
+ if(k===' '){e.preventDefault();doClap()}else if(k>='1'&&k<='5')setH('R',+k);else if('asdfg'.indexOf(k)>=0&&k.length===1)setH('L','asdfg'.indexOf(k)+1);else if(k==='0'){HS.R.deg=0;HS.L.deg=0}
+ else if(k==='ArrowUp'||k==='ArrowDown'){e.preventDefault();var dv=k==='ArrowUp'?.15:-.15;['R','L'].forEach(function(sd){HS[sd].acid=Math.max(0,Math.min(1,HS[sd].acid+dv))})}});
 
 
 /* ---------- eye crops ---------- */
@@ -384,7 +398,7 @@ async function develop(){if(!S.cap.ready)return;var res=$('#result'),body=$('#rb
   var note=document.createElement('p');note.className='lead';note.style.marginTop='18px';note.innerHTML='Noise is an estimate of the pixel noise in grey levels, sharpness is the variance of the Laplacian, and consistency is the PSNR between the output shrunk back by 4 and the denoised low resolution frame it came from. They say how clean, how crisp and how faithful each result is, not how close it is to a real high resolution photo, because there is none. The network is a small ESRGAN-style model trained on generic photos (DIV2K), not on eyes, so fine details such as eyelashes are partly invented. Bicubic only interpolates. Only the frame averaging adds real information, and only as much as your head moved by fractions of a pixel between frames.';body.appendChild(note);
  }catch(e){lead.textContent='Something failed: '+(e&&e.message?e.message:e)}}
 $('#dev').addEventListener('click',develop);$('#rclose').addEventListener('click',function(){$('#result').hidden=true});
-window.__ehs={PH:PH,S:S,develop:develop,shiftImg:shiftImg,onHands:onHands,onFace:onFace,cropEye:cropEye,register:register,bicubicUp:bicubicUp,fuse:fuse,nlm:nlm,noiseSigma:noiseSigma};
+window.__ehs={HS:HS,S:S,develop:develop,shiftImg:shiftImg,onHands:onHands,onFace:onFace,cropEye:cropEye,register:register,bicubicUp:bicubicUp,fuse:fuse,nlm:nlm,noiseSigma:noiseSigma};
 
 /* ---------- beat video ---------- */
 var BPM=90,BARS=16;
@@ -442,16 +456,18 @@ function px(x,y,sc,ox,oy){return [(1-x)*S.vw*sc+ox,y*S.vh*sc+oy]}
 function strokePoly(lm,idx,sc,ox,oy,close){cx.beginPath();idx.forEach(function(i,k){var p=px(lm[i].x,lm[i].y,sc,ox,oy);k?cx.lineTo(p[0],p[1]):cx.moveTo(p[0],p[1])});if(close)cx.closePath();cx.stroke()}
 function draw(){cx.fillStyle='#070708';cx.fillRect(0,0,W,H);
  var sc=Math.max(W/S.vw,H/S.vh),ox=(W-S.vw*sc)/2,oy=(H-S.vh*sc)/2;
- if(S.mode==='cam'&&video.readyState>=2){cx.save();cx.translate(W,0);cx.scale(-1,1);try{cx.filter='grayscale(1) brightness(.5) contrast(1.15)'}catch(e){}cx.drawImage(video,W-(ox+S.vw*sc),oy,S.vw*sc,S.vh*sc);cx.restore();cx.filter='none'}
+ if(S.mode==='cam'&&video.readyState>=2){cx.save();cx.translate(W,0);cx.scale(-1,1);try{cx.filter='grayscale(1) brightness(.9) contrast(1.25)'}catch(e){}cx.drawImage(video,W-(ox+S.vw*sc),oy,S.vw*sc,S.vh*sc);cx.restore();cx.filter='none'}
  else{/* idle backdrop: slow concentric lines */var t=performance.now()/1000;cx.strokeStyle='rgba(200,200,205,.07)';cx.lineWidth=1;for(var i=0;i<14;i++){var r=((t*.05+i/14)%1)*Math.max(W,H)*.8;cx.beginPath();cx.arc(W/2,H*.45,r,0,6.283);cx.stroke()}}
  /* face */
+ cx.shadowColor='rgba(0,0,0,.95)';cx.shadowBlur=5;
  if(S.mode==='cam'&&S.lm){var lm=S.lm;cx.lineWidth=2;cx.strokeStyle=S.closed?'#ffffff':'rgba(235,235,240,.8)';strokePoly(lm,RE,sc,ox,oy,true);strokePoly(lm,LE,sc,ox,oy,true);
   if(lm.length>477&&!S.closed){[468,473].forEach(function(c){var p=px(lm[c].x,lm[c].y,sc,ox,oy),e=px(lm[c+1].x,lm[c+1].y,sc,ox,oy),r=Math.hypot(p[0]-e[0],p[1]-e[1]);cx.beginPath();cx.arc(p[0],p[1],r,0,6.283);cx.stroke();cx.fillStyle='#fff';cx.beginPath();cx.arc(p[0],p[1],Math.max(2,r*.28),0,6.283);cx.fill();
    if(S.gate){cx.strokeStyle='rgba(255,255,255,.6)';cx.beginPath();cx.moveTo(p[0],p[1]);cx.lineTo(p[0]-S.gx*r*9,p[1]-S.gy*r*9);cx.stroke();cx.strokeStyle='#fff'}})}}
  /* hands */
  if(S.mode==='cam'){S.hands.forEach(function(h,hi){cx.lineWidth=2;cx.strokeStyle='rgba(235,235,240,.85)';HC.forEach(function(c){var a=px(h[c[0]].x,h[c[0]].y,sc,ox,oy),b=px(h[c[1]].x,h[c[1]].y,sc,ox,oy);cx.beginPath();cx.moveTo(a[0],a[1]);cx.lineTo(b[0],b[1]);cx.stroke()});
   h.forEach(function(p,i){var q=px(p.x,p.y,sc,ox,oy);cx.fillStyle=(i===4||i===8)?'#fff':'rgba(235,235,240,.7)';cx.beginPath();cx.arc(q[0],q[1],(i===4||i===8)?6:3,0,6.283);cx.fill()});
-  var sd2=(S.handSide||[])[hi];var wp=px(h[0].x,h[0].y,sc,ox,oy);cx.fillStyle='#fff';cx.font='13px "Share Tech Mono",monospace';cx.textAlign='center';cx.fillText(sd2==='R'?'RIGHT':'LEFT',wp[0],wp[1]+22);if(S.hands.length===1||sd2==='L'){var a=px(h[4].x,h[4].y,sc,ox,oy),b=px(h[8].x,h[8].y,sc,ox,oy);cx.setLineDash([4,6]);cx.strokeStyle='#fff';cx.beginPath();cx.moveTo(a[0],a[1]);cx.lineTo(b[0],b[1]);cx.stroke();cx.setLineDash([]);cx.fillStyle='#fff';cx.font='13px "Share Tech Mono",monospace';cx.fillText(Math.round(S.cutoff)+' Hz',(a[0]+b[0])/2+10,(a[1]+b[1])/2)}})}
+  var sd2=(S.handSide||[])[hi];var wp=px(h[0].x,h[0].y,sc,ox,oy);cx.fillStyle='#fff';cx.font='13px "Share Tech Mono",monospace';cx.textAlign='center';cx.fillText(sd2==='R'?'RIGHT':'LEFT',wp[0],wp[1]+22);var ac2=HS[sd2]?HS[sd2].acid:0;cx.fillStyle='rgba(255,255,255,.25)';cx.fillRect(wp[0]-40,wp[1]+30,80,6);cx.fillStyle='#fff';cx.fillRect(wp[0]-40,wp[1]+30,80*ac2,6);cx.font='11px "Share Tech Mono",monospace';cx.fillText('ACID',wp[0],wp[1]+50);if(S.hands.length===1||sd2==='L'){var a=px(h[4].x,h[4].y,sc,ox,oy),b=px(h[8].x,h[8].y,sc,ox,oy);cx.setLineDash([4,6]);cx.strokeStyle='#fff';cx.beginPath();cx.moveTo(a[0],a[1]);cx.lineTo(b[0],b[1]);cx.stroke();cx.setLineDash([]);cx.fillStyle='#fff';cx.font='13px "Share Tech Mono",monospace';cx.fillText(Math.round(S.cutoff)+' Hz',(a[0]+b[0])/2+10,(a[1]+b[1])/2)}})}
+ cx.shadowBlur=0;
  /* tracking readout: capture window, iris trail, blink graph */
  if(S.mode==='cam'&&S.face){['R','L'].forEach(function(sd){var cc=cropCornersScreen(sc,ox,oy,sd);if(cc){cx.strokeStyle='rgba(255,255,255,.6)';cx.setLineDash([6,5]);cx.lineWidth=1.5;cx.beginPath();cc.forEach(function(p,i){i?cx.lineTo(p[0],p[1]):cx.moveTo(p[0],p[1])});cx.closePath();cx.stroke();cx.setLineDash([]);cx.fillStyle='rgba(255,255,255,.85)';cx.font='11px "Share Tech Mono",monospace';cx.textAlign='left';cx.fillText((sd==='R'?'right':'left')+' eye '+CROP.OW+'x'+CROP.OH+' px',Math.min(cc[0][0],cc[1][0]),Math.min(cc[0][1],cc[1][1])-6)}})
   S.trail.forEach(function(p,i){var q=px(p[0],p[1],sc,ox,oy);cx.fillStyle='rgba(255,255,255,'+(i/S.trail.length*.6).toFixed(2)+')';cx.fillRect(q[0]-1.5,q[1]-1.5,3,3)});
@@ -471,7 +487,7 @@ function draw(){cx.fillStyle='#070708';cx.fillRect(0,0,W,H);
   cx.textAlign='left';cx.fillStyle='#fff';cx.beginPath();cx.arc(cx0+S.gx*R*.8,cy0-S.gy*R*.8,5,0,6.283);cx.fill()}
  /* status */
  $('#help').hidden=(S.mode==='idle');
- var st=$('#status');if(S.mode==='idle')st.textContent='';else st.innerHTML='eyes <b>'+(S.closed?'closed':'open')+'</b> &nbsp; note <b>'+(S.sector>=0?NAMES[S.sector]:'-')+'</b> &nbsp; fingers <b>'+S.fingers+'</b> &nbsp; filter <b>'+Math.round(S.cutoff)+' Hz</b>'+(S.mode==='cam'&&!S.face?' &nbsp; <b>no face found</b>':'');
+ var st=$('#status');if(S.mode==='idle')st.textContent='';else st.innerHTML='eyes <b>'+(S.closed?'closed':'open')+'</b> &nbsp; note <b>'+(S.sector>=0?NAMES[S.sector]:'-')+'</b> &nbsp; right hand <b>'+HS.R.deg+'</b> acid <b>'+Math.round(HS.R.acid*100)+'%</b> &nbsp; left hand <b>'+HS.L.deg+'</b> acid <b>'+Math.round(HS.L.acid*100)+'%</b>'+(S.mode==='cam'&&!S.face?' &nbsp; <b>no face found</b>':'');
  requestAnimationFrame(draw)}
 requestAnimationFrame(draw);
 })();
