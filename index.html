@@ -87,7 +87,7 @@ button:focus-visible{outline:2px dashed #fff;outline-offset:3px}
 <div id="status" aria-live="off"></div>
 <div id="help" hidden><button class="ghost" id="hlp">Instructions</button><div id="hbody"></div></div>
 <div id="cap" hidden><div class="pair"><div><canvas id="thOL" width="160" height="80"></canvas><small>left eye open</small></div><div><canvas id="thCL" width="160" height="80"></canvas><small>left closed</small></div></div><div class="pair"><div><canvas id="thOR" width="160" height="80"></canvas><small>right eye open</small></div><div><canvas id="thCR" width="160" height="80"></canvas><small>right closed</small></div></div><button id="dev" disabled>Blink once to capture</button></div>
-<div id="result" hidden><div class="rwrap"><div class="rhead"><h2>Eye photo</h2><span><select id="srsel" aria-label="Super-resolution model"><option value="thick">SR model: thick (best, slower)</option><option value="medium">SR model: medium</option><option value="slim">SR model: slim (fast)</option></select> <button class="ghost" id="mkv">Make beat video</button> <button class="ghost" id="rclose">Back to the instrument</button></span></div><p class="lead" id="rlead"></p><div id="rbody"></div></div></div>
+<div id="result" hidden><div class="rwrap"><div class="rhead"><h2>Eye photo</h2><span><select id="srsel" aria-label="Super-resolution model"><option value="realesr">SR model: Real-ESRGAN general x4</option><option value="thick">SR model: ESRGAN thick (PSNR)</option><option value="medium">SR model: ESRGAN medium</option><option value="slim">SR model: ESRGAN slim (fast)</option></select> <button class="ghost" id="mkv">Make beat video</button> <button class="ghost" id="rclose">Back to the instrument</button></span></div><p class="lead" id="rlead"></p><div id="rbody"></div></div></div>
 
 <div id="panel">
  <div class="card">
@@ -311,13 +311,19 @@ function bicubicUp(img,s){var w=img.width,h=img.height,W=w*s,H=h*s,src=img.data,
  return out}
 function imgToCanvas(img){var c=document.createElement('canvas');c.width=img.width;c.height=img.height;c.getContext('2d').putImageData(img,0,0);return c}
 function loadScript(src){return new Promise(function(res,rej){var s=document.createElement('script');s.src=src;s.onload=res;s.onerror=function(){rej(new Error('Could not load '+src))};document.head.appendChild(s)})}
-var srModels={},SRN='thick';
+var srModels={},SRN='realesr';
 var SRURL={slim:'vendor/sr/x4/model.json',medium:'vendor/sr/medium/x4/model.json',thick:'vendor/sr/thick/x4/model.json'};
 function regLayers(){if(regLayers.done)return;regLayers.done=true;
  class MultiplyBeta extends tf.layers.Layer{constructor(c){super(c||{});this.beta=(c&&c.beta)||.2}call(i){return tf.tidy(function(){return tf.mul(Array.isArray(i)?i[0]:i,.2)})}computeOutputShape(sh){return sh}getConfig(){return Object.assign(super.getConfig(),{beta:this.beta})}static get className(){return 'MultiplyBeta'}}
  class PixelShuffle4x extends tf.layers.Layer{constructor(c){super(c||{})}call(i){return tf.tidy(function(){return tf.depthToSpace(Array.isArray(i)?i[0]:i,4,'NHWC')})}computeOutputShape(sh){return [sh[0],sh[1]==null?null:sh[1]*4,sh[2]==null?null:sh[2]*4,sh[3]==null?null:sh[3]/16]}static get className(){return 'PixelShuffle4x'}}
  tf.serialization.registerClass(MultiplyBeta);tf.serialization.registerClass(PixelShuffle4x)}
-async function loadSR(){if(srModels[SRN])return srModels[SRN];if(!window.tf)await loadScript('vendor/tfjs/tf.min.js');try{await tf.setBackend('webgl')}catch(e){await tf.setBackend('cpu')}await tf.ready();regLayers();if(tf.getBackend()==='cpu'&&SRN==='thick'){SRN='medium';var sl2=$('#srsel');if(sl2)sl2.value='medium'}
+/* Real-ESRGAN general-x4v3 (SRVGGNetCompact): 34 3x3 convolutions with PReLU, pixel shuffle, plus a nearest-neighbour skip. Weights come from the official release, rebuilt here op by op */
+async function loadRealESR(){var man=await (await fetch('vendor/sr/realesr/general-x4v3.json')).json(),buf=await (await fetch('vendor/sr/realesr/general-x4v3.bin')).arrayBuffer(),T=man.map(function(m){var n=m.shape.reduce(function(a,b){return a*b},1);return tf.tensor(new Float32Array(buf,m.off,n),m.shape)});
+ return {predict:function(x){return tf.tidy(function(){var P=6,xp=tf.mirrorPad(x,[[0,0],[P,P],[P,P],[0,0]],'reflect'),y=xp,i=0;
+  while(i<T.length){var m=man[i];if(m.t==='conv'){y=tf.conv2d(y,T[i],1,'same');y=tf.add(y,T[i+1]);i+=2}else{y=tf.prelu(y,T[i]);i+=1}}
+  var ix=[];for(var n=0;n<48;n++)ix.push((n%3)*16+Math.floor(n/3));var up=tf.depthToSpace(tf.gather(y,tf.tensor1d(ix,'int32'),3),4,'NHWC'),base=tf.image.resizeNearestNeighbor(xp,[xp.shape[1]*4,xp.shape[2]*4]),o=tf.add(up,base),sh=x.shape;
+  return o.slice([0,P*4,P*4,0],[1,sh[1]*4,sh[2]*4,3])})}}}
+async function loadSR(){if(srModels[SRN])return srModels[SRN];if(!window.tf)await loadScript('vendor/tfjs/tf.min.js');try{await tf.setBackend('webgl')}catch(e){await tf.setBackend('cpu')}await tf.ready();regLayers();if(SRN==='realesr'){try{srModels.realesr=await loadRealESR();return srModels.realesr}catch(e){console.warn('Real-ESRGAN failed',e);SRN='medium';var s3=$('#srsel');if(s3)s3.value='medium';return loadSR()}}if(tf.getBackend()==='cpu'&&SRN==='thick'){SRN='medium';var sl2=$('#srsel');if(sl2)sl2.value='medium'}
  try{srModels[SRN]=await tf.loadLayersModel(SRURL[SRN])}catch(e){if(SRN!=='slim'){console.warn('SR model '+SRN+' failed, using slim',e);SRN='slim';var sel=$('#srsel');if(sel)sel.value='slim';return loadSR()}throw e}return srModels[SRN]}
 async function srUp(canvas){var m=await loadSR();var out=tf.tidy(function(){var x=tf.browser.fromPixels(canvas).toFloat().div(255).expandDims(0);var y=m.predict(x);return y.mul(255).clipByValue(0,255).round().squeeze().toInt()});var o=document.createElement('canvas');await tf.browser.toPixels(out,o);out.dispose();return o}
 
@@ -412,7 +418,7 @@ async function develop(){if(!S.cap.ready)return;var res=$('#result'),body=$('#rb
   var note=document.createElement('p');note.className='lead';note.style.marginTop='18px';note.innerHTML='Noise is an estimate of the pixel noise in grey levels, sharpness is the variance of the Laplacian, and consistency is the PSNR between the output shrunk back by 4 and the denoised low resolution frame it came from. They say how clean, how crisp and how faithful each result is, not how close it is to a real high resolution photo, because there is none. The network is a small ESRGAN-style model trained on generic photos (DIV2K), not on eyes, so fine details such as eyelashes are partly invented. Bicubic only interpolates. Only the frame averaging adds real information, and only as much as your head moved by fractions of a pixel between frames.';body.appendChild(note);
  }catch(e){lead.textContent='Something failed: '+(e&&e.message?e.message:e)}}
 $('#dev').addEventListener('click',develop);$('#srsel').addEventListener('change',function(){SRN=this.value;develop()});$('#rclose').addEventListener('click',function(){$('#result').hidden=true});
-window.__ehs={HS:HS,S:S,develop:develop,shiftImg:shiftImg,onHands:onHands,onFace:onFace,cropEye:cropEye,register:register,bicubicUp:bicubicUp,fuse:fuse,nlm:nlm,noiseSigma:noiseSigma};
+window.srUpPub=function(c){return srUp(c)};window.__ehs={HS:HS,S:S,develop:develop,shiftImg:shiftImg,onHands:onHands,onFace:onFace,cropEye:cropEye,register:register,bicubicUp:bicubicUp,fuse:fuse,nlm:nlm,noiseSigma:noiseSigma};
 
 /* ---------- beat video ---------- */
 var BPM=90,BARS=16;

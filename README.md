@@ -21,3 +21,5 @@ Everything runs in the browser. No video or image leaves your device.
 
 Super-resolution models (UpscalerJS, MIT): esrgan-slim, esrgan-medium and esrgan-thick, all x4, trained on DIV2K.
 Quality depends mostly on how many camera pixels cover the eye: use the highest camera resolution, sit close (eye 120+ px wide), light your face, stay still.
+
+Default super-resolution: Real-ESRGAN general-x4v3 (SRVGGNetCompact, official weights, BSD-3-Clause, Xintao Wang et al.), rebuilt operation by operation in TensorFlow.js.
