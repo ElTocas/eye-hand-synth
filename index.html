@@ -71,6 +71,8 @@ button:focus-visible{outline:2px dashed #fff;outline-offset:3px}
 .lab{display:flex;justify-content:space-between;font-size:12px;letter-spacing:.14em;text-transform:uppercase;color:var(--dim)}
 .seg{display:flex;gap:8px;flex-wrap:wrap}
 .seg button{padding:7px 12px;font-size:12px}
+.shp{display:flex;align-items:center;gap:8px;font-size:12px;letter-spacing:.1em;text-transform:uppercase;color:var(--ink)}.shp input{width:120px;accent-color:#fff}
+.rhead select{background:#101012;color:var(--ink);border:1px solid var(--dim);font:12px var(--mono);padding:8px 8px}
 .dl{display:inline-block;margin:8px 0 2px;color:var(--ink);letter-spacing:.1em;text-transform:uppercase;font-size:12px;border-bottom:1px solid var(--dim)}
 .fpair{display:flex;gap:8px;flex-wrap:wrap}.fpair canvas{flex:1 1 280px;min-width:0;max-width:100%;image-rendering:auto}
 .seg button.on{background:#fff}
@@ -85,7 +87,7 @@ button:focus-visible{outline:2px dashed #fff;outline-offset:3px}
 <div id="status" aria-live="off"></div>
 <div id="help" hidden><button class="ghost" id="hlp">Instructions</button><div id="hbody"></div></div>
 <div id="cap" hidden><div class="pair"><div><canvas id="thOL" width="160" height="80"></canvas><small>left eye open</small></div><div><canvas id="thCL" width="160" height="80"></canvas><small>left closed</small></div></div><div class="pair"><div><canvas id="thOR" width="160" height="80"></canvas><small>right eye open</small></div><div><canvas id="thCR" width="160" height="80"></canvas><small>right closed</small></div></div><button id="dev" disabled>Blink once to capture</button></div>
-<div id="result" hidden><div class="rwrap"><div class="rhead"><h2>Eye photo</h2><span><button class="ghost" id="mkv">Make beat video</button> <button class="ghost" id="rclose">Back to the instrument</button></span></div><p class="lead" id="rlead"></p><div id="rbody"></div></div></div>
+<div id="result" hidden><div class="rwrap"><div class="rhead"><h2>Eye photo</h2><span><select id="srsel" aria-label="Super-resolution model"><option value="thick">SR model: thick (best, slower)</option><option value="medium">SR model: medium</option><option value="slim">SR model: slim (fast)</option></select> <button class="ghost" id="mkv">Make beat video</button> <button class="ghost" id="rclose">Back to the instrument</button></span></div><p class="lead" id="rlead"></p><div id="rbody"></div></div></div>
 
 <div id="panel">
  <div class="card">
@@ -200,11 +202,11 @@ function onFace(res){var lms=res.multiFaceLandmarks;if(!lms||!lms.length){S.face
  if(S.cL&&!S.cR&&eR>S.openR*.8){S.wL++;if(S.wL===3&&!S.wUL){S.wUL=true;doHat()}}else{S.wL=0;if(!S.cL)S.wUL=false}
  var imgR=null,imgL=null;try{imgR=cropEye(lm,'R');imgL=cropEye(lm,'L')}catch(e){}
  S.earHist.push(ear/S.earOpen);if(S.earHist.length>160)S.earHist.shift();
- if(imgR&&imgL){S.buf.push({R:imgR,L:imgL,ear:ear});if(S.buf.length>14)S.buf.shift()}
+ if(imgR&&imgL){S.buf.push({R:imgR,L:imgL,ear:ear});if(S.buf.length>22)S.buf.shift()}
  if(closed){S.closeFrames++;if(!S.closed&&S.closeFrames>=2){S.closed=true;doKick();
-   var op=S.buf.filter(function(b){return b.ear>S.earOpen*.85}).slice(-8);if(op.length>=2){S.cap.oR=op.map(function(b){return b.R});S.cap.oL=op.map(function(b){return b.L});S.cap.cR=[];S.cap.cL=[];S.cap.cE=[];S.cap.pending=true;S.cap.ready=false}}
+   var op=S.buf.filter(function(b){return b.ear>S.earOpen*.85}).slice(-16);if(op.length>=2){S.cap.oR=luckiest(op,'R',8);S.cap.oL=luckiest(op,'L',8);S.cap.cR=[];S.cap.cL=[];S.cap.cE=[];S.cap.pending=true;S.cap.ready=false}}
   if(S.cap.pending&&imgR&&imgL&&S.cap.cR.length<14){S.cap.cR.push(imgR);S.cap.cL.push(imgL);S.cap.cE.push(ear)}}
- else{if(S.closed&&S.cap.pending&&S.cap.cR.length>=2){S.cap.pending=false;var ord=S.cap.cE.map(function(e,i){return i}).sort(function(a,b){return S.cap.cE[a]-S.cap.cE[b]}).slice(0,6);S.cap.cR=ord.map(function(i){return S.cap.cR[i]});S.cap.cL=ord.map(function(i){return S.cap.cL[i]});S.cap.ready=true;showThumbs()}S.closeFrames=0;S.closed=false}
+ else{if(S.closed&&S.cap.pending&&S.cap.cR.length>=2){S.cap.pending=false;var ord=S.cap.cE.map(function(e,i){return i}).sort(function(a,b){return S.cap.cE[a]-S.cap.cE[b]}).slice(0,9);var cr0=ord.map(function(i){return S.cap.cR[i]}),cl0=ord.map(function(i){return S.cap.cL[i]});S.cap.cR=luckiestImgs(cr0,6);S.cap.cL=luckiestImgs(cl0,6);S.cap.ready=true;showThumbs()}S.closeFrames=0;S.closed=false}
  if(!closed&&lm.length>477){var ri=lm[468],li=lm[473];
   var rx=(ri.x-lm[33].x)/(lm[133].x-lm[33].x),lx=(li.x-lm[362].x)/(lm[263].x-lm[362].x);
   var ry=(ri.y-lm[159].y)/(lm[145].y-lm[159].y),ly=(li.y-lm[386].y)/(lm[374].y-lm[386].y);
@@ -237,7 +239,7 @@ var face=null,hands=null,stream=null,running=false;
 async function startCam(){if(starting||running)return;starting=true;if(location.protocol==='file:'){$('#err').textContent='Open this page through a local server (python3 -m http.server) or GitHub Pages, not by double-clicking the file: the models cannot load from file://.';starting=false;return}var err=$('#err');err.textContent='';
  if(!navigator.mediaDevices||!navigator.mediaDevices.getUserMedia){err.textContent='This browser has no camera access. Try the mouse mode.';return}
  try{initAudio();if(ac.state==='suspended')ac.resume();
-  try{stream=await navigator.mediaDevices.getUserMedia({video:{width:{ideal:1280},height:{ideal:720},facingMode:'user'},audio:false})}
+  try{stream=await navigator.mediaDevices.getUserMedia({video:{width:{ideal:1920},height:{ideal:1080},facingMode:'user'},audio:false})}
   catch(e0){if(e0&&e0.name==='NotAllowedError')throw e0;stream=await navigator.mediaDevices.getUserMedia({video:true,audio:false})}
   video.srcObject=stream;
   await new Promise(function(ok){if(video.readyState>=1)ok();else video.addEventListener('loadedmetadata',ok,{once:true});setTimeout(ok,4000)});
@@ -253,7 +255,7 @@ async function startCam(){if(starting||running)return;starting=true;if(location.
  catch(e){err.textContent=(e&&e.name==='NotAllowedError')?'Camera permission was denied. Allow it in the address bar, or use the mouse mode.':'Could not start ['+STAGE+' | '+location.protocol+' | '+navigator.userAgent.slice(-60)+']: '+(e&&e.message?e.message:e)+' '+String(e&&e.stack||'').split('\n').slice(0,3).join(' / ');$('#go').textContent='Open camera'}
  starting=false}
 async function loop(){if(!running)return;if(video.readyState>=2){try{await face.send({image:video});if(hands)await hands.send({image:video})}catch(e){}}requestAnimationFrame(loop)}
-function stopAll(){running=false;stopSeq();HS.R.deg=HS.L.deg=0;if(stream)stream.getTracks().forEach(function(t){t.stop()});stream=null;gate(false);S.mode='idle';S.gate=false;S.sector=-1;S.lm=null;S.hands=[];PH.R.hist=[];PH.L.hist=[];$('#panel').hidden=false;$('#tools').hidden=true;$('#go').textContent='Open camera'}
+function stopAll(){running=false;stopSeq();HS.R.deg=HS.L.deg=0;if(stream)stream.getTracks().forEach(function(t){t.stop()});stream=null;gate(false);S.mode='idle';S.gate=false;S.sector=-1;S.lm=null;S.hands=[];$('#panel').hidden=false;$('#tools').hidden=true;$('#go').textContent='Open camera'}
 $('#go').addEventListener('click',startCam);
 $('#stop').addEventListener('click',stopAll);
 $('#recenter').addEventListener('click',recenter);
@@ -269,13 +271,16 @@ addEventListener('keydown',function(e){var k=e.key;if(k==='c'||k==='C'){if(S.mod
  else if(k==='ArrowUp'||k==='ArrowDown'){e.preventDefault();var dv=k==='ArrowUp'?.15:-.15;['R','L'].forEach(function(sd){HS[sd].acid=Math.max(0,Math.min(1,HS[sd].acid+dv))})}});
 
 
+/* lucky imaging: keep the sharpest frames of the burst, drop the ones blurred by motion */
+function luckiestImgs(list,n){var sc=list.map(function(im,i){return [sharp(imgToCanvas(im)),i]}).sort(function(a,b){return b[0]-a[0]}).slice(0,Math.min(n,list.length));return sc.map(function(q){return list[q[1]]})}
+function luckiest(buf,side,n){return luckiestImgs(buf.map(function(b){return b[side]}),n)}
 /* ---------- eye crops ---------- */
 var CROP={OW:0,OH:0,R:null,L:null};
 var EC={R:[33,133],L:[362,263]};
 function cropEye(lm,side){var a=lm[EC[side][0]],b=lm[EC[side][1]],vw=S.vw,vh=S.vh,p0x=a.x*vw,p0y=a.y*vh,p1x=b.x*vw,p1y=b.y*vh,w=Math.hypot(p1x-p0x,p1y-p0y),th=Math.atan2(p1y-p0y,p1x-p0x);
  if(!CROP.OW){CROP.OW=Math.max(64,Math.min(192,Math.round(w/.6/8)*8));CROP.OH=CROP.OW/2;['R','L'].forEach(function(q){var c=document.createElement('canvas');c.width=CROP.OW;c.height=CROP.OH;CROP[q]={cv:c,ctx:c.getContext('2d',{willReadFrequently:true}),info:null}})}
  var o=CROP[side],k=.6*CROP.OW/w,c=Math.cos(th),s=Math.sin(th),e=.2*CROP.OW-k*(c*p0x+s*p0y),f=.5*CROP.OH-k*(-s*p0x+c*p0y),x=o.ctx;
- o.info={k:k,c:c,s:s,p0x:p0x,p0y:p0y};x.setTransform(1,0,0,1,0,0);x.clearRect(0,0,CROP.OW,CROP.OH);x.setTransform(k*c,-k*s,k*s,k*c,e,f);x.imageSmoothingQuality='high';x.drawImage(video,0,0);x.setTransform(1,0,0,1,0,0);return x.getImageData(0,0,CROP.OW,CROP.OH)}
+ if(side==='R')S.eyePx=w;o.info={k:k,c:c,s:s,p0x:p0x,p0y:p0y};x.setTransform(1,0,0,1,0,0);x.clearRect(0,0,CROP.OW,CROP.OH);x.setTransform(k*c,-k*s,k*s,k*c,e,f);x.imageSmoothingQuality='high';x.drawImage(video,0,0);x.setTransform(1,0,0,1,0,0);return x.getImageData(0,0,CROP.OW,CROP.OH)}
 function putImg(cv,img){cv.width=img.width;cv.height=img.height;cv.getContext('2d').putImageData(img,0,0)}
 function showThumbs(){chime();$('#cap').hidden=false;var C=S.cap;putImg($('#thOR'),C.oR[C.oR.length-1]);putImg($('#thCR'),C.cR[0]);putImg($('#thOL'),C.oL[C.oL.length-1]);putImg($('#thCL'),C.cL[0]);var b=$('#dev');b.disabled=false;b.textContent='Develop ('+C.oR.length+' open + '+C.cR.length+' closed frames per eye)'}
 function cropCornersScreen(sc,ox,oy,side){var c=CROP[side]&&CROP[side].info;if(!c||!CROP.OW)return null;var pts=[[0,0],[CROP.OW,0],[CROP.OW,CROP.OH],[0,CROP.OH]];return pts.map(function(p){var u=(p[0]-.2*CROP.OW)/c.k,v=(p[1]-.5*CROP.OH)/c.k,x=c.p0x+c.c*u-c.s*v,y=c.p0y+c.s*u+c.c*v;return [(1-x/S.vw)*S.vw*sc+ox,y*sc+oy]})}
@@ -306,8 +311,14 @@ function bicubicUp(img,s){var w=img.width,h=img.height,W=w*s,H=h*s,src=img.data,
  return out}
 function imgToCanvas(img){var c=document.createElement('canvas');c.width=img.width;c.height=img.height;c.getContext('2d').putImageData(img,0,0);return c}
 function loadScript(src){return new Promise(function(res,rej){var s=document.createElement('script');s.src=src;s.onload=res;s.onerror=function(){rej(new Error('Could not load '+src))};document.head.appendChild(s)})}
-var srModel=null;
-async function loadSR(){if(srModel)return srModel;if(!window.tf)await loadScript('vendor/tfjs/tf.min.js');try{await tf.setBackend('webgl')}catch(e){await tf.setBackend('cpu')}await tf.ready();srModel=await tf.loadLayersModel('vendor/sr/x4/model.json');return srModel}
+var srModels={},SRN='thick';
+var SRURL={slim:'vendor/sr/x4/model.json',medium:'vendor/sr/medium/x4/model.json',thick:'vendor/sr/thick/x4/model.json'};
+function regLayers(){if(regLayers.done)return;regLayers.done=true;
+ class MultiplyBeta extends tf.layers.Layer{constructor(c){super(c||{});this.beta=(c&&c.beta)||.2}call(i){return tf.tidy(function(){return tf.mul(Array.isArray(i)?i[0]:i,.2)})}computeOutputShape(sh){return sh}getConfig(){return Object.assign(super.getConfig(),{beta:this.beta})}static get className(){return 'MultiplyBeta'}}
+ class PixelShuffle4x extends tf.layers.Layer{constructor(c){super(c||{})}call(i){return tf.tidy(function(){return tf.depthToSpace(Array.isArray(i)?i[0]:i,4,'NHWC')})}computeOutputShape(sh){return [sh[0],sh[1]==null?null:sh[1]*4,sh[2]==null?null:sh[2]*4,sh[3]==null?null:sh[3]/16]}static get className(){return 'PixelShuffle4x'}}
+ tf.serialization.registerClass(MultiplyBeta);tf.serialization.registerClass(PixelShuffle4x)}
+async function loadSR(){if(srModels[SRN])return srModels[SRN];if(!window.tf)await loadScript('vendor/tfjs/tf.min.js');try{await tf.setBackend('webgl')}catch(e){await tf.setBackend('cpu')}await tf.ready();regLayers();if(tf.getBackend()==='cpu'&&SRN==='thick'){SRN='medium';var sl2=$('#srsel');if(sl2)sl2.value='medium'}
+ try{srModels[SRN]=await tf.loadLayersModel(SRURL[SRN])}catch(e){if(SRN!=='slim'){console.warn('SR model '+SRN+' failed, using slim',e);SRN='slim';var sel=$('#srsel');if(sel)sel.value='slim';return loadSR()}throw e}return srModels[SRN]}
 async function srUp(canvas){var m=await loadSR();var out=tf.tidy(function(){var x=tf.browser.fromPixels(canvas).toFloat().div(255).expandDims(0);var y=m.predict(x);return y.mul(255).clipByValue(0,255).round().squeeze().toInt()});var o=document.createElement('canvas');await tf.browser.toPixels(out,o);out.dispose();return o}
 
 /* ---------- metrics ---------- */
@@ -317,24 +328,27 @@ function tile(cv,cap,cls){var d=document.createElement('div');d.className='tile 
 function shown(cv){var c=document.createElement('canvas');c.width=cv.width;c.height=cv.height;c.getContext('2d').drawImage(cv,0,0);return c}
 
 /* ---------- multi-frame fusion and denoising ---------- */
-function shiftImg(img,dx,dy){var w=img.width,h=img.height,o=new ImageData(w,h),d=img.data;
- for(var y=0;y<h;y++){var sy=Math.min(h-1,Math.max(0,y+dy)),y0=Math.floor(sy),y1=Math.min(h-1,y0+1),fy=sy-y0;
-  for(var x=0;x<w;x++){var sx=Math.min(w-1,Math.max(0,x+dx)),x0=Math.floor(sx),x1=Math.min(w-1,x0+1),fx=sx-x0,q=(y*w+x)*4;
-   for(var c=0;c<3;c++){var a=d[(y0*w+x0)*4+c],b=d[(y0*w+x1)*4+c],e=d[(y1*w+x0)*4+c],f=d[(y1*w+x1)*4+c];o.data[q+c]=(a*(1-fx)+b*fx)*(1-fy)+(e*(1-fx)+f*fx)*fy}o.data[q+3]=255}}return o}
-function meanImgs(list){var w=list[0].width,h=list[0].height,o=new ImageData(w,h),n=list.length;for(var i=0;i<w*h*4;i+=4){for(var c=0;c<3;c++){var s=0;for(var k=0;k<n;k++)s+=list[k].data[i+c];o.data[i+c]=s/n}o.data[i+3]=255}return o}
+function shiftImg(img,dx,dy){var w=img.width,h=img.height,o=new ImageData(w,h),d=img.data,wx=new Float32Array(4),wy=new Float32Array(4);
+ for(var y=0;y<h;y++){var sy=y+dy,y0=Math.floor(sy),fy=sy-y0;for(var k=-1;k<=2;k++)wy[k+1]=cw(fy-k);
+  for(var x=0;x<w;x++){var sx=x+dx,x0=Math.floor(sx),fx=sx-x0,q=(y*w+x)*4;for(var k2=-1;k2<=2;k2++)wx[k2+1]=cw(fx-k2);
+   var r=0,g=0,b=0;for(var j=0;j<4;j++){var yy=Math.min(h-1,Math.max(0,y0+j-1));for(var i2=0;i2<4;i2++){var xx=Math.min(w-1,Math.max(0,x0+i2-1)),wt=wx[i2]*wy[j],p=(yy*w+xx)*4;r+=d[p]*wt;g+=d[p+1]*wt;b+=d[p+2]*wt}}
+   o.data[q]=r<0?0:r>255?255:r;o.data[q+1]=g<0?0:g>255?255:g;o.data[q+2]=b<0?0:b>255?255:b;o.data[q+3]=255}}return o}
+function meanImgs(list,wts){var w=list[0].width,h=list[0].height,o=new ImageData(w,h),n=list.length,tw=0;wts=wts||list.map(function(){return 1});wts.forEach(function(v){tw+=v});for(var i=0;i<w*h*4;i+=4){for(var c=0;c<3;c++){var s=0;for(var k=0;k<n;k++)s+=list[k].data[i+c]*wts[k];o.data[i+c]=s/tw}o.data[i+3]=255}return o}
 function sharpest(list){var best=0,bv=-1;list.forEach(function(im,i){var v=sharp(imgToCanvas(im));if(v>bv){bv=v;best=i}});return best}
 /* register every frame onto the reference (translation, subpixel), then average: aligned at 1x for denoising and at 4x (bicubic, quarter pixel shifts) for a real multi-frame gain */
 function fuse(frames,ref,full,SC){var shifts=[],lr=[],hr=[];
  frames.forEach(function(f){var r=f===ref?{dx:0,dy:0,ncc:1,ncc0:1,mask:null}:register(ref,f,full);shifts.push(r);lr.push(shiftImg(f,r.dx,r.dy));hr.push(shiftImg(bicubicUp(f,SC),r.dx*SC,r.dy*SC))});
- return {lr:meanImgs(lr),hr:meanImgs(hr),shifts:shifts,n:frames.length}}
+ var wts=frames.map(function(f){return Math.max(1,sharp(imgToCanvas(f)))});
+ return {lr:meanImgs(lr,wts),hr:meanImgs(hr,wts),shifts:shifts,n:frames.length}}
 function noiseSigma(img){var w=img.width,h=img.height,g=gray(img),s=0,n=0;for(var y=1;y<h-1;y++)for(var x=1;x<w-1;x++){var v=g[(y-1)*w+x-1]-2*g[(y-1)*w+x]+g[(y-1)*w+x+1]-2*g[y*w+x-1]+4*g[y*w+x]-2*g[y*w+x+1]+g[(y+1)*w+x-1]-2*g[(y+1)*w+x]+g[(y+1)*w+x+1];s+=Math.abs(v);n++}return Math.sqrt(Math.PI/2)*s/(6*n)}
 /* non-local means: each pixel becomes a weighted mean of pixels whose 3x3 neighbourhood looks like its own */
-function nlm(img,sigma){var w=img.width,h=img.height,d=img.data,o=new ImageData(w,h),R=4,P=1,h2=Math.pow(Math.max(1.2,sigma)*.9,2),s2=2*sigma*sigma;
+function nlm(img,sigma){if(sigma<1.3){var cp=new ImageData(new Uint8ClampedArray(img.data),img.width,img.height);return cp}var w=img.width,h=img.height,d=img.data,o=new ImageData(w,h),R=4,P=1,h2=Math.pow(Math.max(1,sigma)*.6,2),s2=2*sigma*sigma;
  function at(x,y,c){x=x<0?0:x>=w?w-1:x;y=y<0?0:y>=h?h-1:y;return d[(y*w+x)*4+c]}
  for(var y=0;y<h;y++)for(var x=0;x<w;x++){var acc=[0,0,0],ws=0,wmax=0;
   for(var j=-R;j<=R;j++)for(var i=-R;i<=R;i++){if(!i&&!j)continue;var dd=0;for(var v=-P;v<=P;v++)for(var u=-P;u<=P;u++)for(var c=0;c<3;c++){var t=at(x+u,y+v,c)-at(x+i+u,y+j+v,c);dd+=t*t}dd/=27;var wt=Math.exp(-Math.max(dd-s2,0)/h2);if(wt>wmax)wmax=wt;ws+=wt;for(var c2=0;c2<3;c2++)acc[c2]+=wt*at(x+i,y+j,c2)}
   ws+=wmax||1;var q=(y*w+x)*4;for(var c3=0;c3<3;c3++)o.data[q+c3]=(acc[c3]+(wmax||1)*d[q+c3])/ws;o.data[q+3]=255}return o}
 
+function unsharp(c,amt){if(amt<=0)return;var w=c.width,h=c.height,t=document.createElement('canvas');t.width=w;t.height=h;var tx=t.getContext('2d');tx.filter='blur(3px)';tx.drawImage(c,0,0);tx.filter='none';var cx2=c.getContext('2d'),a=cx2.getImageData(0,0,w,h),b=tx.getImageData(0,0,w,h);for(var i=0;i<a.data.length;i+=4)for(var k=0;k<3;k++){var v=a.data[i+k]+amt*(a.data[i+k]-b.data[i+k]);a.data[i+k]=v<0?0:v>255?255:v}cx2.putImageData(a,0,0)}
 /* ---------- develop ---------- */
 function nnUp(c,SC){var o=document.createElement('canvas');o.width=c.width*SC;o.height=c.height*SC;var x=o.getContext('2d');x.imageSmoothingEnabled=false;x.drawImage(c,0,0,o.width,o.height);return o}
 async function processEye(side,SC,say){
@@ -343,7 +357,7 @@ async function processEye(side,SC,say){
  var ref=op[sharpest(op)],fo=fuse(op,ref,true,SC),fc=fuse(cl,ref,false,SC);
  var single=ref,singleC=shiftImg(cl[0],fc.shifts[0].dx,fc.shifts[0].dy);
  say('Denoising the '+nm+' eye (non-local means)...');await new Promise(function(r){setTimeout(r,30)});
- var sg=noiseSigma(fo.lr),sgC=noiseSigma(fc.lr),dO=nlm(fo.lr,Math.max(1.5,sg)),dC=nlm(fc.lr,Math.max(1.5,sgC));
+ var sg=noiseSigma(fo.lr),sgC=noiseSigma(fc.lr),dO=nlm(fo.lr,sg),dC=nlm(fc.lr,sgC);
  var r={nm:nm,side:side,single:single,singleC:singleC,fo:fo,fc:fc,dO:dO,dC:dC,sig:{raw:noiseSigma(single),fused:sg,den:noiseSigma(dO),rawC:noiseSigma(singleC),fusedC:sgC,denC:noiseSigma(dC)},
   regAB:register(ref,cl[0],false)};
  say('Upscaling the '+nm+' eye with bicubic and the super-resolution network...');await new Promise(function(r2){setTimeout(r2,30)});
@@ -387,17 +401,17 @@ async function develop(){if(!S.cap.ready)return;var res=$('#result'),body=$('#rb
   seg.querySelectorAll('button').forEach(function(bt){bt.addEventListener('click',function(){seg.querySelectorAll('button').forEach(function(x){x.classList.toggle('on',x===bt)});secs.R.hidden=bt.dataset.e!=='R';secs.L.hidden=bt.dataset.e!=='L'})});
   var h2=document.createElement('h3');h2.className='rsec';h2.textContent='Final image: open to closed';body.appendChild(h2);
   var fin=document.createElement('div');fin.className='final';
-  fin.innerHTML='<div class="seg"><button class="on" data-m="fin">Multi-frame + denoise + SR</button><button data-m="sr">One frame SR</button><button data-m="bi">One frame bicubic</button><button id="savebtn" class="ghost" style="margin-left:auto">Save PNG</button></div>';
+  fin.innerHTML='<div class="seg"><button class="on" data-m="fin">Multi-frame + denoise + SR</button><button data-m="sr">One frame SR</button><button data-m="bi">One frame bicubic</button><label class="shp">Sharpen <input type="range" id="shp" min="0" max="200" value="60"></label><button id="savebtn" class="ghost" style="margin-left:auto">Save PNG</button></div>';
   var pair=document.createElement('div');pair.className='fpair';var cvs={};rs.slice().reverse().forEach(function(r){var c=document.createElement('canvas');c.width=r.finO.width;c.height=r.finO.height;cvs[r.side]=c;pair.appendChild(c)});fin.appendChild(pair);
   var sl=document.createElement('input');sl.type='range';sl.min=0;sl.max=100;sl.value=0;sl.setAttribute('aria-label','Open to closed');fin.appendChild(sl);
   var lab=document.createElement('div');lab.className='lab';lab.innerHTML='<span>open</span><span>closed, registered</span>';fin.appendChild(lab);body.appendChild(fin);
-  var mode='fin';function paint(){rs.forEach(function(r){var a=mode==='fin'?r.finO:mode==='sr'?r.srO:r.biO,b=mode==='fin'?r.finC:mode==='sr'?r.srC:r.biC,x=cvs[r.side].getContext('2d');x.globalAlpha=1;x.drawImage(a,0,0);x.globalAlpha=sl.value/100;x.drawImage(b,0,0);x.globalAlpha=1})}
-  sl.addEventListener('input',paint);fin.querySelectorAll('[data-m]').forEach(function(bt){bt.addEventListener('click',function(){mode=bt.dataset.m;fin.querySelectorAll('[data-m]').forEach(function(q){q.classList.toggle('on',q===bt)});paint()})});
+  var mode='fin';function paint(){rs.forEach(function(r){var a=mode==='fin'?r.finO:mode==='sr'?r.srO:r.biO,b=mode==='fin'?r.finC:mode==='sr'?r.srC:r.biC,x=cvs[r.side].getContext('2d');x.globalAlpha=1;x.drawImage(a,0,0);x.globalAlpha=sl.value/100;x.drawImage(b,0,0);x.globalAlpha=1;unsharp(cvs[r.side],fin.querySelector('#shp').value/100)})}
+  sl.addEventListener('input',paint);fin.querySelector('#shp').addEventListener('input',paint);fin.querySelectorAll('[data-m]').forEach(function(bt){bt.addEventListener('click',function(){mode=bt.dataset.m;fin.querySelectorAll('[data-m]').forEach(function(q){q.classList.toggle('on',q===bt)});paint()})});
   fin.querySelector('#savebtn').addEventListener('click',function(){var o=document.createElement('canvas'),a=cvs.L,b=cvs.R;o.width=a.width+b.width+8;o.height=a.height;var x=o.getContext('2d');x.fillStyle='#000';x.fillRect(0,0,o.width,o.height);x.drawImage(a,0,0);x.drawImage(b,a.width+8,0);o.toBlob(function(bl){var u=URL.createObjectURL(bl),l=document.createElement('a');l.href=u;l.download='eyes-open-to-closed.png';l.click();setTimeout(function(){URL.revokeObjectURL(u)},2000)})});
   paint();
   var note=document.createElement('p');note.className='lead';note.style.marginTop='18px';note.innerHTML='Noise is an estimate of the pixel noise in grey levels, sharpness is the variance of the Laplacian, and consistency is the PSNR between the output shrunk back by 4 and the denoised low resolution frame it came from. They say how clean, how crisp and how faithful each result is, not how close it is to a real high resolution photo, because there is none. The network is a small ESRGAN-style model trained on generic photos (DIV2K), not on eyes, so fine details such as eyelashes are partly invented. Bicubic only interpolates. Only the frame averaging adds real information, and only as much as your head moved by fractions of a pixel between frames.';body.appendChild(note);
  }catch(e){lead.textContent='Something failed: '+(e&&e.message?e.message:e)}}
-$('#dev').addEventListener('click',develop);$('#rclose').addEventListener('click',function(){$('#result').hidden=true});
+$('#dev').addEventListener('click',develop);$('#srsel').addEventListener('change',function(){SRN=this.value;develop()});$('#rclose').addEventListener('click',function(){$('#result').hidden=true});
 window.__ehs={HS:HS,S:S,develop:develop,shiftImg:shiftImg,onHands:onHands,onFace:onFace,cropEye:cropEye,register:register,bicubicUp:bicubicUp,fuse:fuse,nlm:nlm,noiseSigma:noiseSigma};
 
 /* ---------- beat video ---------- */
@@ -487,7 +501,7 @@ function draw(){cx.fillStyle='#070708';cx.fillRect(0,0,W,H);
   cx.textAlign='left';cx.fillStyle='#fff';cx.beginPath();cx.arc(cx0+S.gx*R*.8,cy0-S.gy*R*.8,5,0,6.283);cx.fill()}
  /* status */
  $('#help').hidden=(S.mode==='idle');
- var st=$('#status');if(S.mode==='idle')st.textContent='';else st.innerHTML='eyes <b>'+(S.closed?'closed':'open')+'</b> &nbsp; note <b>'+(S.sector>=0?NAMES[S.sector]:'-')+'</b> &nbsp; right hand <b>'+HS.R.deg+'</b> acid <b>'+Math.round(HS.R.acid*100)+'%</b> &nbsp; left hand <b>'+HS.L.deg+'</b> acid <b>'+Math.round(HS.L.acid*100)+'%</b>'+(S.mode==='cam'&&!S.face?' &nbsp; <b>no face found</b>':'');
+ var st=$('#status');if(S.mode==='idle')st.textContent='';else st.innerHTML='eyes <b>'+(S.closed?'closed':'open')+'</b> &nbsp; note <b>'+(S.sector>=0?NAMES[S.sector]:'-')+'</b> &nbsp; right hand <b>'+HS.R.deg+'</b> acid <b>'+Math.round(HS.R.acid*100)+'%</b> &nbsp; left hand <b>'+HS.L.deg+'</b> acid <b>'+Math.round(HS.L.acid*100)+'%</b>'+(S.mode==='cam'&&!S.face?' &nbsp; <b>no face found</b>':'')+(S.mode==='cam'&&S.face&&S.eyePx?' &nbsp; eye <b>'+Math.round(S.eyePx)+' px</b> wide'+(S.eyePx<75?' <b>too small, move closer</b>':''):'');
  requestAnimationFrame(draw)}
 requestAnimationFrame(draw);
 })();

@@ -18,3 +18,6 @@ Everything runs in the browser. No video or image leaves your device.
 - MediaPipe Face Mesh and Hands (Apache-2.0), vendored in `vendor/`
 - TensorFlow.js (Apache-2.0)
 - UpscalerJS ESRGAN-slim x4 weights (MIT, trained on DIV2K), see `vendor/sr/LICENSE-esrgan-slim.txt`
+
+Super-resolution models (UpscalerJS, MIT): esrgan-slim, esrgan-medium and esrgan-thick, all x4, trained on DIV2K.
+Quality depends mostly on how many camera pixels cover the eye: use the highest camera resolution, sit close (eye 120+ px wide), light your face, stay still.
