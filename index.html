@@ -1,0 +1,329 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Eye Hand Synth · Tommaso Martire</title>
+<meta name="description" content="An instrument you play with your eyes and hands through the webcam. Blink for the kick, stab the air for the snare, look around to play the synth, shape it with your fingers. Everything runs in your browser.">
+<meta name="author" content="Tommaso Martire">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Black+Ops+One&family=Share+Tech+Mono&display=swap">
+<style>
+/* Layout: one full-screen canvas (mirrored webcam in grey, landmarks and pulses drawn on top), a small HUD, a start panel. Grey only. */
+:root{--bg:#070708;--ink:#ececee;--dim:#8d8d93;--line:#3a3a40;--disp:'Black Ops One',Impact,sans-serif;--mono:'Share Tech Mono','Courier New',monospace;color-scheme:dark}
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+html,body{height:100%;margin:0;background:var(--bg);color:var(--ink);font-family:var(--mono);overflow:hidden}
+#stage{position:fixed;inset:0;width:100%;height:100%;display:block}
+.top{position:fixed;left:max(16px,env(safe-area-inset-left,0px));top:calc(14px + env(safe-area-inset-top,0px));z-index:5;letter-spacing:.2em;text-transform:uppercase;font-size:12px;color:var(--dim)}
+.top a{color:var(--ink);text-decoration:none;border-bottom:1px solid var(--dim)}
+#status{position:fixed;left:max(16px,env(safe-area-inset-left,0px));bottom:calc(14px + env(safe-area-inset-bottom,0px));z-index:5;font-size:13px;line-height:1.7;letter-spacing:.08em;color:var(--ink);text-shadow:0 0 6px #000}
+#status b{color:#fff;font-weight:400}
+#panel{position:fixed;inset:0;z-index:10;display:grid;place-items:center;background:rgba(7,7,8,.88);padding:max(16px,env(safe-area-inset-top,0px)) max(16px,env(safe-area-inset-right,0px)) max(16px,env(safe-area-inset-bottom,0px)) max(16px,env(safe-area-inset-left,0px));overflow:auto}
+.card{max-width:640px;width:100%;border:1px solid var(--line);background:#101012;padding:26px 26px 22px}
+h1{font-family:var(--disp);font-weight:400;font-size:clamp(30px,7vw,52px);line-height:1;letter-spacing:.06em;margin:0 0 6px;text-transform:uppercase}
+.sub{color:var(--dim);letter-spacing:.14em;text-transform:uppercase;font-size:12px;margin:0 0 18px}
+dl{margin:0 0 18px;display:grid;grid-template-columns:auto 1fr;gap:8px 16px;font-size:15px;line-height:1.4}
+dt{color:#fff;letter-spacing:.08em;text-transform:uppercase;white-space:nowrap}
+dd{margin:0;color:#c9c9ce}
+.row{display:flex;flex-wrap:wrap;gap:12px}
+button{font-family:var(--mono);font-size:14px;letter-spacing:.14em;text-transform:uppercase;color:#000;background:var(--ink);border:0;padding:12px 18px;cursor:pointer;clip-path:polygon(0 8px,8px 0,100% 0,100% calc(100% - 8px),calc(100% - 8px) 100%,0 100%)}
+button:hover{background:#fff}
+button.ghost{background:transparent;color:var(--ink);box-shadow:inset 0 0 0 1px var(--dim);clip-path:none}
+button:focus-visible{outline:2px dashed #fff;outline-offset:3px}
+.note{margin:16px 0 0;color:var(--dim);font-size:13px;line-height:1.5}
+#err{color:#fff;margin:12px 0 0;font-size:14px;min-height:1.2em}
+.tools{position:fixed;right:max(16px,env(safe-area-inset-right,0px));top:calc(10px + env(safe-area-inset-top,0px));z-index:5;display:flex;gap:8px}
+.tools button{padding:8px 12px;font-size:12px}
+#cap{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(14px + env(safe-area-inset-bottom,0px));z-index:6;display:flex;gap:10px;align-items:center;background:rgba(7,7,8,.78);border:1px solid var(--line);padding:8px 12px}
+#cap canvas{width:96px;height:48px;image-rendering:pixelated;border:1px solid var(--line);background:#000}
+#cap small{display:block;color:var(--dim);font-size:10px;letter-spacing:.14em;text-transform:uppercase;text-align:center;margin-top:2px}
+#cap button{padding:10px 14px;font-size:12px}
+#cap button[disabled]{opacity:.35;cursor:not-allowed}
+#result{position:fixed;inset:0;z-index:20;background:#070708;overflow:auto;padding:max(18px,env(safe-area-inset-top,0px)) max(16px,env(safe-area-inset-right,0px)) 40px max(16px,env(safe-area-inset-left,0px))}
+.rwrap{max-width:1100px;margin:0 auto}
+.rhead{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap}
+.rhead h2{font-family:var(--disp);font-weight:400;font-size:clamp(26px,5vw,42px);margin:0;letter-spacing:.05em;text-transform:uppercase}
+.lead{color:#c9c9ce;max-width:70ch;line-height:1.5;margin:8px 0 18px}
+.rgrid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px}
+.tile{border:1px solid var(--line);background:#0d0d0f;padding:8px;min-width:0}
+.tile canvas{width:100%;height:auto;display:block;image-rendering:auto;background:#000}
+.tile.px canvas{image-rendering:pixelated}
+.tile p{margin:8px 2px 2px;font-size:12px;letter-spacing:.08em;color:var(--dim);line-height:1.5}
+.tile p b{color:#fff;font-weight:400}
+.rsec{margin:28px 0 10px;font-family:var(--disp);font-weight:400;letter-spacing:.08em;text-transform:uppercase;font-size:20px}
+.final{display:grid;gap:10px;border:1px solid var(--line);padding:12px;background:#0d0d0f;max-width:760px}
+.final canvas{width:100%;height:auto;display:block}
+.final input[type=range]{width:100%;accent-color:#fff}
+.lab{display:flex;justify-content:space-between;font-size:12px;letter-spacing:.14em;text-transform:uppercase;color:var(--dim)}
+.seg{display:flex;gap:8px;flex-wrap:wrap}
+.seg button{padding:7px 12px;font-size:12px}
+.seg button.on{background:#fff}
+@media(max-width:700px){.rgrid{grid-template-columns:1fr 1fr}}
+@media(max-width:520px){dl{grid-template-columns:1fr;gap:2px 0}dd{margin-bottom:8px}}
+</style>
+</head>
+<body>
+<canvas id="stage"></canvas>
+<div class="top"><a href="../index.html">Tommaso Martire</a> &nbsp;/&nbsp; Eye Hand Synth</div>
+<div class="tools" id="tools" hidden><button class="ghost" id="recenter">Center gaze (C)</button><button class="ghost" id="stop">Stop</button></div>
+<div id="status" aria-live="off"></div>
+<div id="cap" hidden><div><canvas id="thO" width="160" height="80"></canvas><small>open</small></div><div><canvas id="thC" width="160" height="80"></canvas><small>closed</small></div><button id="dev" disabled>Blink once to capture</button></div>
+<div id="result" hidden><div class="rwrap"><div class="rhead"><h2>Eye photo</h2><button class="ghost" id="rclose">Back to the instrument</button></div><p class="lead" id="rlead"></p><div id="rbody"></div></div></div>
+
+<div id="panel">
+ <div class="card">
+  <h1>Eye Hand Synth</h1>
+  <p class="sub">An instrument you play with your face</p>
+  <dl>
+   <dt>Blink</dt><dd>Close both eyes and the kick drum hits.</dd>
+   <dt>Hand stab</dt><dd>Move a hand down fast, like hitting a drum, and the snare hits.</dd>
+   <dt>Pupils</dt><dd>Look in a direction to play the synth. Eight directions are eight notes of a minor scale. Look at the centre to stop.</dd>
+   <dt>Fingers</dt><dd>Pinch thumb and index to open or close the filter. The number of raised fingers changes the sound, from pure sine to a wide saw stack.</dd>
+  </dl>
+  <div class="row"><button id="go">Open camera</button><button class="ghost" id="demo">Play with the mouse</button></div>
+  <p id="err"></p>
+  <p class="note">Blink once with a hand-held steady face and the page also keeps two small eye photos, one open and one closed. Press Develop to register them and compare bicubic upscaling with a super-resolution network. Your video never leaves this page. Face and hand tracking run locally in your browser, nothing is recorded or uploaded. Use headphones, and keep your face and hand well lit. Mouse mode: move to look, click to blink, space for snare, keys 1 to 5 for fingers, arrow up and down for the filter.</p>
+ </div>
+</div>
+
+<script src="vendor/face_mesh/face_mesh.js"></script>
+<script>
+(function(){
+'use strict';
+var $=function(s){return document.querySelector(s)};
+var cv=$('#stage'),cx=cv.getContext('2d'),W=0,H=0,DPR=1;
+function resize(){DPR=Math.min(2,window.devicePixelRatio||1);W=cv.clientWidth;H=cv.clientHeight;cv.width=W*DPR;cv.height=H*DPR;cx.setTransform(DPR,0,0,DPR,0,0)}
+addEventListener('resize',resize);resize();
+var reduce=matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+/* ---------- state ---------- */
+var S={mode:'idle',face:false,earL:.3,earR:.3,earOpen:.3,closed:false,closeFrames:0,gx:0,gy:0,ox:0,oy:0,rawx:0,rawy:0,mag:0,gate:false,sector:-1,
+  hands:[],fingers:3,pinch:.6,cutoff:2000,wave:'sawtooth',lastKick:0,lastSnare:0,vw:1280,vh:720,flash:0,snFlash:0,calN:0,buf:[],cap:{open:null,closed:null,minEar:9,pending:false,ready:false},earHist:[],trail:[]};
+var NOTES=[220,261.63,293.66,329.63,392,440,523.25,587.33],NAMES=['A3','C4','D4','E4','G4','A4','C5','D5'];
+var rings=[],slashes=[];
+
+/* ---------- audio ---------- */
+var ac=null,master,rev,revG,ana,noiseBuf,shaper,voice=null;
+function initAudio(){if(ac)return true;var AC=window.AudioContext||window.webkitAudioContext;if(!AC)return false;ac=new AC();
+ var comp=ac.createDynamicsCompressor();comp.threshold.value=-12;comp.ratio.value=6;master=ac.createGain();master.gain.value=.9;ana=ac.createAnalyser();ana.fftSize=1024;master.connect(comp);comp.connect(ana);ana.connect(ac.destination);
+ var n=ac.sampleRate,b=ac.createBuffer(1,n,n),d=b.getChannelData(0);for(var i=0;i<n;i++)d[i]=Math.random()*2-1;noiseBuf=b;
+ shaper=ac.createWaveShaper();var c=new Float32Array(1024);for(var j=0;j<1024;j++){var x=j/512-1;c[j]=Math.tanh(2.6*x)}shaper.curve=c;
+ var len=ac.sampleRate*1.8,ir=ac.createBuffer(2,len,ac.sampleRate);for(var ch=0;ch<2;ch++){var dd=ir.getChannelData(ch);for(var k=0;k<len;k++)dd[k]=(Math.random()*2-1)*Math.pow(1-k/len,3)}
+ rev=ac.createConvolver();rev.buffer=ir;revG=ac.createGain();revG.gain.value=.28;rev.connect(revG);revG.connect(master);
+ /* synth voice: 3 oscillators -> filter -> env -> dry + delay + reverb */
+ var o1=ac.createOscillator(),o2=ac.createOscillator(),o3=ac.createOscillator(),f=ac.createBiquadFilter(),env=ac.createGain(),dl=ac.createDelay(1),fb=ac.createGain(),dw=ac.createGain();
+ o1.type=o2.type='sawtooth';o3.type='sine';f.type='lowpass';f.Q.value=7;f.frequency.value=2000;env.gain.value=0;o1.frequency.value=o2.frequency.value=220;o3.frequency.value=110;
+ dl.delayTime.value=.33;fb.gain.value=.38;dw.gain.value=.3;
+ var g3=ac.createGain();g3.gain.value=0;o1.connect(f);o2.connect(f);o3.connect(g3);g3.connect(f);f.connect(env);env.connect(master);env.connect(dl);dl.connect(fb);fb.connect(dl);dl.connect(dw);dw.connect(master);env.connect(rev);
+ o1.start();o2.start();o3.start();voice={o1:o1,o2:o2,o3:o3,g3:g3,f:f,env:env};return true}
+function kick(){if(!ac)return;var t=ac.currentTime,o=ac.createOscillator(),g=ac.createGain();o.type='sine';o.frequency.setValueAtTime(180,t);o.frequency.exponentialRampToValueAtTime(42,t+.11);g.gain.setValueAtTime(1.1,t);g.gain.exponentialRampToValueAtTime(.001,t+.4);o.connect(shaper);shaper.connect(g);g.connect(master);o.start(t);o.stop(t+.42)}
+function noiseHit(t,dur,type,freq,q,vol,dest){var s=ac.createBufferSource();s.buffer=noiseBuf;var f=ac.createBiquadFilter();f.type=type;f.frequency.value=freq;f.Q.value=q;var g=ac.createGain();g.gain.setValueAtTime(vol,t);g.gain.exponentialRampToValueAtTime(.001,t+dur);s.connect(f);f.connect(g);g.connect(master);if(dest)g.connect(dest);s.start(t);s.stop(t+dur+.02)}
+function snare(){if(!ac)return;var t=ac.currentTime,o=ac.createOscillator(),g=ac.createGain();o.type='triangle';o.frequency.setValueAtTime(250,t);o.frequency.exponentialRampToValueAtTime(130,t+.1);g.gain.setValueAtTime(.5,t);g.gain.exponentialRampToValueAtTime(.001,t+.16);o.connect(g);g.connect(master);o.start(t);o.stop(t+.18);noiseHit(t,.22,'bandpass',2200,.8,.6,rev);noiseHit(t,.1,'highpass',5200,.7,.25)}
+var WAVES=[{t:'sine',d:0,sub:0},{t:'triangle',d:4,sub:0},{t:'sawtooth',d:9,sub:0},{t:'square',d:12,sub:.5},{t:'sawtooth',d:20,sub:.6},{t:'sawtooth',d:34,sub:.9}];
+function applyVoice(){if(!voice)return;var t=ac.currentTime,w=WAVES[S.fingers];voice.o1.type=voice.o2.type=w.t;voice.o1.detune.setTargetAtTime(-w.d,t,.05);voice.o2.detune.setTargetAtTime(w.d,t,.05);voice.g3.gain.setTargetAtTime(w.sub*.6,t,.05);voice.f.frequency.setTargetAtTime(S.cutoff,t,.04)}
+function setNote(i){if(!voice)return;var t=ac.currentTime,f=NOTES[i];voice.o1.frequency.setTargetAtTime(f,t,.035);voice.o2.frequency.setTargetAtTime(f,t,.035);voice.o3.frequency.setTargetAtTime(f/2,t,.035)}
+function gate(on){if(!voice)return;var t=ac.currentTime;voice.env.gain.cancelScheduledValues(t);voice.env.gain.setTargetAtTime(on?.34:0,t,on?.02:.14)}
+
+/* ---------- events ---------- */
+function doKick(){var n=performance.now();if(n-S.lastKick<180)return;S.lastKick=n;kick();rings.push({x:W/2,y:H*.45,r:20,a:1,v:14});if(!reduce)S.flash=.5}
+function doSnare(){var n=performance.now();if(n-S.lastSnare<170)return;S.lastSnare=n;snare();for(var i=0;i<14;i++)slashes.push({y:Math.random()*H,h:1+Math.random()*3,l:.35+Math.random()*.2});if(!reduce)S.snFlash=.6}
+
+/* ---------- face ---------- */
+var RE=[33,7,163,144,145,153,154,155,133,173,157,158,159,160,161,246],LE=[362,382,381,380,374,373,390,249,263,466,388,387,386,385,384,398];
+function d2(a,b){return Math.hypot((a.x-b.x)*S.vw,(a.y-b.y)*S.vh)}
+function onFace(res){var lms=res.multiFaceLandmarks;if(!lms||!lms.length){S.face=false;S.lm=null;return}var lm=lms[0];S.lm=lm;S.face=true;
+ var eR=d2(lm[159],lm[145])/d2(lm[33],lm[133]),eL=d2(lm[386],lm[374])/d2(lm[263],lm[362]);S.earR=eR;S.earL=eL;var ear=(eR+eL)/2;
+ if(ear>S.earOpen*.78)S.earOpen+=(Math.max(ear,.15)-S.earOpen)*.02;
+ var closed=S.closed?ear<S.earOpen*.75:ear<S.earOpen*.6;
+ var img=null;try{img=cropEye(lm)}catch(e){}
+ S.earHist.push(ear/S.earOpen);if(S.earHist.length>160)S.earHist.shift();
+ if(img){S.buf.push({img:img,ear:ear});if(S.buf.length>10)S.buf.shift()}
+ if(closed){S.closeFrames++;if(!S.closed&&S.closeFrames>=2){S.closed=true;doKick();
+   var bst=null;S.buf.forEach(function(b){if(!bst||b.ear>bst.ear)bst=b});if(bst){S.cap.open=bst.img;S.cap.closed=null;S.cap.minEar=9;S.cap.pending=true;S.cap.ready=false}}
+  if(S.cap.pending&&img&&ear<S.cap.minEar){S.cap.minEar=ear;S.cap.closed=img}}
+ else{if(S.closed&&S.cap.pending&&S.cap.closed){S.cap.pending=false;S.cap.ready=true;showThumbs()}S.closeFrames=0;S.closed=false}
+ if(!closed&&lm.length>477){var ri=lm[468],li=lm[473];
+  var rx=(ri.x-lm[33].x)/(lm[133].x-lm[33].x),lx=(li.x-lm[362].x)/(lm[263].x-lm[362].x);
+  var ry=(ri.y-lm[159].y)/(lm[145].y-lm[159].y),ly=(li.y-lm[386].y)/(lm[374].y-lm[386].y);
+  S.rawx=-((rx+lx)/2-.5)*2;S.rawy=-((ry+ly)/2-.5)*2;
+  if(S.calN<30){S.ox=(S.ox*S.calN+S.rawx)/(S.calN+1);S.oy=(S.oy*S.calN+S.rawy)/(S.calN+1);S.calN++}else if(S.mag<.3){S.ox+=(S.rawx-S.ox)*.003;S.oy+=(S.rawy-S.oy)*.003}
+  var gx=Math.max(-1,Math.min(1,(S.rawx-S.ox)*3.4)),gy=Math.max(-1,Math.min(1,(S.rawy-S.oy)*4.2));
+  S.gx+=(gx-S.gx)*.45;S.gy+=(gy-S.gy)*.45;updateGaze();S.trail.push([lm[468].x,lm[468].y]);if(S.trail.length>28)S.trail.shift()}}
+function updateGaze(){S.mag=Math.hypot(S.gx,S.gy);var on=S.gate?S.mag>.38:S.mag>.5;
+ if(on){var a=Math.atan2(S.gx,S.gy);if(a<0)a+=6.2832;var sec=Math.floor((a+.3927)/.7854)%8;if(sec!==S.sector){S.sector=sec;setNote(sec)}}
+ if(on!==S.gate){S.gate=on;gate(on);if(!on)S.sector=-1}}
+function recenter(){S.ox=S.rawx;S.oy=S.rawy;S.gx=S.gy=0;S.calN=30}
+
+/* ---------- hands ---------- */
+var HC=[[0,1],[1,2],[2,3],[3,4],[0,5],[5,6],[6,7],[7,8],[5,9],[9,10],[10,11],[11,12],[9,13],[13,14],[14,15],[15,16],[13,17],[0,17],[17,18],[18,19],[19,20]];
+var prevW=[];
+function onHands(res){var hs=res.multiHandLandmarks||[];S.hands=hs;var now=performance.now();
+ hs.forEach(function(h,i){var y=h[0].y,p=prevW[i];if(p){var dt=(now-p.t)/1000;if(dt>0){var v=(y-p.y)/dt;p.v=p.v*.5+v*.5;if(p.v>1.35&&now-S.lastSnare>170)doSnare()}p.y=y;p.t=now}else prevW[i]={y:y,t:now,v:0}});
+ prevW.length=hs.length;
+ if(hs.length){var h=hs[0],sz=d2(h[0],h[9])||1,pi=d2(h[4],h[8])/sz;S.pinch=pi;
+  var cut=200*Math.pow(30,Math.max(0,Math.min(1,(pi-.12)/.9)));S.cutoff+=(cut-S.cutoff)*.5;
+  var n=0,tips=[8,12,16,20],pips=[6,10,14,18];for(var k=0;k<4;k++)if(d2(h[tips[k]],h[0])>d2(h[pips[k]],h[0])*1.12)n++;if(d2(h[4],h[17])>d2(h[3],h[17])*1.18)n++;
+  if(n!==S.fingers){S.fingers=n;}applyVoice()}}
+
+/* ---------- camera loop ---------- */
+var video=document.createElement('video');video.playsInline=true;video.muted=true;video.setAttribute('playsinline','');video.setAttribute('muted','');video.style.cssText='position:fixed;left:0;top:0;width:2px;height:2px;opacity:.01;pointer-events:none';document.body.appendChild(video);var starting=false;var STAGE='';
+var face=null,hands=null,stream=null,running=false;
+async function startCam(){if(starting||running)return;starting=true;if(location.protocol==='file:'){$('#err').textContent='Open this page through a local server (python3 -m http.server) or GitHub Pages, not by double-clicking the file: the models cannot load from file://.';starting=false;return}var err=$('#err');err.textContent='';
+ if(!navigator.mediaDevices||!navigator.mediaDevices.getUserMedia){err.textContent='This browser has no camera access. Try the mouse mode.';return}
+ try{initAudio();if(ac.state==='suspended')ac.resume();
+  try{stream=await navigator.mediaDevices.getUserMedia({video:{width:{ideal:1280},height:{ideal:720},facingMode:'user'},audio:false})}
+  catch(e0){if(e0&&e0.name==='NotAllowedError')throw e0;stream=await navigator.mediaDevices.getUserMedia({video:true,audio:false})}
+  video.srcObject=stream;
+  await new Promise(function(ok){if(video.readyState>=1)ok();else video.addEventListener('loadedmetadata',ok,{once:true});setTimeout(ok,4000)});
+  for(var k=0;k<4;k++){try{await video.play();break}catch(e1){if(k==3)throw e1;await new Promise(function(r){setTimeout(r,300)})}}
+  for(var w=0;w<30&&!video.videoWidth;w++)await new Promise(function(r){setTimeout(r,100)});S.vw=video.videoWidth||1280;S.vh=video.videoHeight||720;
+  $('#go').textContent='Loading models';
+  face=new FaceMesh({locateFile:function(f){return 'vendor/face_mesh/'+f}});face.setOptions({maxNumFaces:1,refineLandmarks:true,minDetectionConfidence:.5,minTrackingConfidence:.5});face.onResults(onFace);
+  STAGE='face init';await face.initialize();STAGE='face first frame';try{await face.send({image:video})}catch(e){}
+  try{await new Promise(function(ok,ko){var sc=document.createElement('script');sc.src='vendor/hands/hands.js';sc.onload=ok;sc.onerror=ko;document.head.appendChild(sc)});
+   hands=new Hands({locateFile:function(f){return 'vendor/hands/'+f}});hands.setOptions({maxNumHands:2,modelComplexity:0,minDetectionConfidence:.6,minTrackingConfidence:.5});hands.onResults(onHands);await hands.initialize()}
+  catch(e){hands=null;console.warn('hands unavailable',e);err.textContent='Hand tracking could not start ('+(e&&e.message||e)+'). Eyes only: use mouse keys for snare.'}
+  S.mode='cam';running=true;$('#panel').hidden=true;$('#tools').hidden=false;applyVoice();loop()}
+ catch(e){err.textContent=(e&&e.name==='NotAllowedError')?'Camera permission was denied. Allow it in the address bar, or use the mouse mode.':'Could not start ['+STAGE+' | '+location.protocol+' | '+navigator.userAgent.slice(-60)+']: '+(e&&e.message?e.message:e)+' '+String(e&&e.stack||'').split('\n').slice(0,3).join(' / ');$('#go').textContent='Open camera'}
+ starting=false}
+async function loop(){if(!running)return;if(video.readyState>=2){try{await face.send({image:video});if(hands)await hands.send({image:video})}catch(e){}}requestAnimationFrame(loop)}
+function stopAll(){running=false;if(stream)stream.getTracks().forEach(function(t){t.stop()});stream=null;gate(false);S.mode='idle';S.gate=false;S.sector=-1;S.lm=null;S.hands=[];$('#panel').hidden=false;$('#tools').hidden=true;$('#go').textContent='Open camera'}
+$('#go').addEventListener('click',startCam);
+$('#stop').addEventListener('click',stopAll);
+$('#recenter').addEventListener('click',recenter);
+
+/* ---------- mouse mode ---------- */
+$('#demo').addEventListener('click',function(){initAudio();if(ac.state==='suspended')ac.resume();S.mode='mouse';$('#panel').hidden=true;$('#tools').hidden=false;$('#recenter').hidden=true;applyVoice()});
+cv.addEventListener('pointermove',function(e){if(S.mode!=='mouse')return;S.gx=Math.max(-1,Math.min(1,(e.clientX-W/2)/(W*.35)));S.gy=Math.max(-1,Math.min(1,-(e.clientY-H*.5)/(H*.35)));updateGaze()});
+cv.addEventListener('pointerdown',function(){if(S.mode==='mouse'){doKick();S.closed=true;setTimeout(function(){S.closed=false},160)}});
+addEventListener('keydown',function(e){var k=e.key;if(k==='c'||k==='C'){if(S.mode==='cam')recenter();return}
+ if(S.mode!=='mouse')return;
+ if(k===' '){e.preventDefault();doSnare()}else if(k>='1'&&k<='5'){S.fingers=+k;applyVoice()}else if(k==='0'){S.fingers=0;applyVoice()}
+ else if(k==='ArrowUp'){e.preventDefault();S.cutoff=Math.min(7000,S.cutoff*1.25);applyVoice()}else if(k==='ArrowDown'){e.preventDefault();S.cutoff=Math.max(200,S.cutoff/1.25);applyVoice()}});
+
+
+/* ---------- eye crops ---------- */
+var CROP={OW:0,OH:0,cv:document.createElement('canvas'),ctx:null};
+function cropEye(lm){var vw=S.vw,vh=S.vh,p0x=lm[33].x*vw,p0y=lm[33].y*vh,p1x=lm[133].x*vw,p1y=lm[133].y*vh,w=Math.hypot(p1x-p0x,p1y-p0y),th=Math.atan2(p1y-p0y,p1x-p0x);
+ if(!CROP.OW){CROP.OW=Math.max(64,Math.min(192,Math.round(w/.6/8)*8));CROP.OH=CROP.OW/2;CROP.cv.width=CROP.OW;CROP.cv.height=CROP.OH;CROP.ctx=CROP.cv.getContext('2d',{willReadFrequently:true})}
+ var k=.6*CROP.OW/w,c=Math.cos(th),s=Math.sin(th),e=.2*CROP.OW-k*(c*p0x+s*p0y),f=.5*CROP.OH-k*(-s*p0x+c*p0y),x=CROP.ctx;
+ S.crop={k:k,c:c,s:s,p0x:p0x,p0y:p0y};x.setTransform(1,0,0,1,0,0);x.clearRect(0,0,CROP.OW,CROP.OH);x.setTransform(k*c,-k*s,k*s,k*c,e,f);x.imageSmoothingQuality='high';x.drawImage(video,0,0);x.setTransform(1,0,0,1,0,0);return x.getImageData(0,0,CROP.OW,CROP.OH)}
+function putImg(cv,img){cv.width=img.width;cv.height=img.height;cv.getContext('2d').putImageData(img,0,0)}
+function showThumbs(){$('#cap').hidden=false;putImg($('#thO'),S.cap.open);putImg($('#thC'),S.cap.closed);var b=$('#dev');b.disabled=false;b.textContent='Develop eye photo'}
+function cropCornersScreen(sc,ox,oy){var c=S.crop;if(!c||!CROP.OW)return null;var pts=[[0,0],[CROP.OW,0],[CROP.OW,CROP.OH],[0,CROP.OH]];return pts.map(function(p){var u=(p[0]-.2*CROP.OW)/c.k,v=(p[1]-.5*CROP.OH)/c.k,x=c.p0x+c.c*u-c.s*v,y=c.p0y+c.s*u+c.c*v;return [(1-x/S.vw)*S.vw*sc+ox,y*sc+oy]})}
+
+/* ---------- registration (translation, skin around the eye only) ---------- */
+function gray(img){var d=img.data,n=img.width*img.height,g=new Float32Array(n);for(var i=0;i<n;i++)g[i]=.299*d[4*i]+.587*d[4*i+1]+.114*d[4*i+2];return g}
+function blur5(g,w,h){var k=[1,4,6,4,1],o=new Float32Array(g.length),t=new Float32Array(g.length);
+ for(var y=0;y<h;y++)for(var x=0;x<w;x++){var s=0;for(var i=-2;i<=2;i++){var xx=Math.min(w-1,Math.max(0,x+i));s+=g[y*w+xx]*k[i+2]}t[y*w+x]=s/16}
+ for(var y2=0;y2<h;y2++)for(var x2=0;x2<w;x2++){var s2=0;for(var j=-2;j<=2;j++){var yy=Math.min(h-1,Math.max(0,y2+j));s2+=t[yy*w+x2]*k[j+2]}o[y2*w+x2]=s2/16}return o}
+function nccAt(a,b,w,h,dx,dy,mk){var n=0,sa=0,sb=0,saa=0,sbb=0,sab=0,m=10;for(var y=m;y<h-m;y++){var y2=y+dy;if(y2<0||y2>=h)continue;for(var x=m;x<w-m;x++){if(!mk[y*w+x])continue;var x2=x+dx;if(x2<0||x2>=w)continue;var A=a[y*w+x],B=b[y2*w+x2];n++;sa+=A;sb+=B;saa+=A*A;sbb+=B*B;sab+=A*B}}
+ if(n<50)return -1;var ca=saa-sa*sa/n,cb=sbb-sb*sb/n;return ca>1e-6&&cb>1e-6?(sab-sa*sb/n)/Math.sqrt(ca*cb):-1}
+function register(imgA,imgB){var w=imgA.width,h=imgA.height,ga=blur5(gray(imgA),w,h),gb=blur5(gray(imgB),w,h),mk=new Uint8Array(w*h);
+ for(var y=0;y<h;y++)for(var x=0;x<w;x++){var ex=(x-w/2)/(.34*w),ey=(y-h/2)/(.3*h);mk[y*w+x]=(ex*ex+ey*ey)>1?1:0}
+ var R=8,best=-2,bx=0,by=0,grid={};for(var dy=-R;dy<=R;dy++)for(var dx=-R;dx<=R;dx++){var v=nccAt(ga,gb,w,h,dx,dy,mk);grid[dx+','+dy]=v;if(v>best){best=v;bx=dx;by=dy}}
+ function sub(vm,v0,vp){var d=vm-2*v0+vp;return Math.abs(d)<1e-9?0:.5*(vm-vp)/d}
+ var fx=bx,fy=by;if(Math.abs(bx)<R&&Math.abs(by)<R){fx=bx+sub(grid[(bx-1)+','+by],best,grid[(bx+1)+','+by]);fy=by+sub(grid[bx+','+(by-1)],best,grid[bx+','+(by+1)])}
+ return {dx:fx,dy:fy,ncc0:grid['0,0'],ncc:best,mask:mk}}
+function shifted(img,dx,dy){var a=document.createElement('canvas');a.width=img.width;a.height=img.height;a.getContext('2d').putImageData(img,0,0);var b=document.createElement('canvas');b.width=img.width;b.height=img.height;var x=b.getContext('2d');x.imageSmoothingQuality='high';x.drawImage(a,-dx,-dy);return b}
+function diffCanvas(ca,cb,mask){var w=ca.width,h=ca.height,A=ca.getContext('2d').getImageData(0,0,w,h),B=cb.getContext('2d').getImageData(0,0,w,h),o=document.createElement('canvas');o.width=w;o.height=h;var ox=o.getContext('2d'),O=ox.createImageData(w,h),sum=0,n=0;
+ for(var i=0;i<w*h;i++){var ga=.299*A.data[4*i]+.587*A.data[4*i+1]+.114*A.data[4*i+2],gb=.299*B.data[4*i]+.587*B.data[4*i+1]+.114*B.data[4*i+2],d=Math.abs(ga-gb);if(mask[i]){sum+=d;n++}var v=Math.min(255,d*3);O.data[4*i]=O.data[4*i+1]=O.data[4*i+2]=v;O.data[4*i+3]=255}
+ ox.putImageData(O,0,0);return {cv:o,mad:n?sum/n:0}}
+
+/* ---------- upscalers ---------- */
+function cw(t){var a=-.5;t=Math.abs(t);return t<=1?(a+2)*t*t*t-(a+3)*t*t+1:(t<2?a*t*t*t-5*a*t*t+8*a*t-4*a:0)}
+function bicubicUp(img,s){var w=img.width,h=img.height,W=w*s,H=h*s,src=img.data,tmp=new Float32Array(W*h*3),out=new ImageData(W,H);
+ for(var y=0;y<h;y++)for(var X=0;X<W;X++){var sx=(X+.5)/s-.5,ix=Math.floor(sx),f=sx-ix,r=0,g=0,b=0;for(var k=-1;k<=2;k++){var xx=Math.min(w-1,Math.max(0,ix+k)),wt=cw(f-k),p=(y*w+xx)*4;r+=src[p]*wt;g+=src[p+1]*wt;b+=src[p+2]*wt}var q=(y*W+X)*3;tmp[q]=r;tmp[q+1]=g;tmp[q+2]=b}
+ for(var Y=0;Y<H;Y++){var sy=(Y+.5)/s-.5,iy=Math.floor(sy),fy=sy-iy;for(var X2=0;X2<W;X2++){var r2=0,g2=0,b2=0;for(var k2=-1;k2<=2;k2++){var yy=Math.min(h-1,Math.max(0,iy+k2)),wt2=cw(fy-k2),q2=(yy*W+X2)*3;r2+=tmp[q2]*wt2;g2+=tmp[q2+1]*wt2;b2+=tmp[q2+2]*wt2}var o=(Y*W+X2)*4;out.data[o]=Math.max(0,Math.min(255,r2));out.data[o+1]=Math.max(0,Math.min(255,g2));out.data[o+2]=Math.max(0,Math.min(255,b2));out.data[o+3]=255}}
+ return out}
+function imgToCanvas(img){var c=document.createElement('canvas');c.width=img.width;c.height=img.height;c.getContext('2d').putImageData(img,0,0);return c}
+function loadScript(src){return new Promise(function(res,rej){var s=document.createElement('script');s.src=src;s.onload=res;s.onerror=function(){rej(new Error('Could not load '+src))};document.head.appendChild(s)})}
+var srModel=null;
+async function loadSR(){if(srModel)return srModel;if(!window.tf)await loadScript('vendor/tfjs/tf.min.js');try{await tf.setBackend('webgl')}catch(e){await tf.setBackend('cpu')}await tf.ready();srModel=await tf.loadLayersModel('vendor/sr/x4/model.json');return srModel}
+async function srUp(canvas){var m=await loadSR();var out=tf.tidy(function(){var x=tf.browser.fromPixels(canvas).toFloat().div(255).expandDims(0);var y=m.predict(x);return y.mul(255).clipByValue(0,255).round().squeeze().toInt()});var o=document.createElement('canvas');await tf.browser.toPixels(out,o);out.dispose();return o}
+
+/* ---------- metrics ---------- */
+function sharp(c){var w=c.width,h=c.height,d=c.getContext('2d').getImageData(0,0,w,h).data,g=new Float32Array(w*h);for(var i=0;i<w*h;i++)g[i]=.299*d[4*i]+.587*d[4*i+1]+.114*d[4*i+2];var s=0,s2=0,n=0;for(var y=1;y<h-1;y++)for(var x=1;x<w-1;x++){var l=4*g[y*w+x]-g[y*w+x-1]-g[y*w+x+1]-g[(y-1)*w+x]-g[(y+1)*w+x];s+=l;s2+=l*l;n++}var m=s/n;return s2/n-m*m}
+function consist(big,lr,sc){var w=lr.width,h=lr.height,B=big.getContext('2d').getImageData(0,0,big.width,big.height).data,mse=0;for(var y=0;y<h;y++)for(var x=0;x<w;x++)for(var c=0;c<3;c++){var s=0;for(var j=0;j<sc;j++)for(var i=0;i<sc;i++)s+=B[(((y*sc+j)*big.width)+(x*sc+i))*4+c];s/=sc*sc;var dv=s-lr.data[(y*w+x)*4+c];mse+=dv*dv}mse/=w*h*3;return mse<1e-9?99:10*Math.log10(255*255/mse)}
+function tile(cv,cap,cls){var d=document.createElement('div');d.className='tile '+(cls||'');d.appendChild(cv);var p=document.createElement('p');p.innerHTML=cap;d.appendChild(p);return d}
+function shown(cv){var c=document.createElement('canvas');c.width=cv.width;c.height=cv.height;c.getContext('2d').drawImage(cv,0,0);return c}
+
+/* ---------- develop ---------- */
+async function develop(){if(!S.cap.ready)return;var res=$('#result'),body=$('#rbody'),lead=$('#rlead');res.hidden=false;body.innerHTML='';lead.textContent='Registering the two frames...';
+ try{
+  var open=S.cap.open,closed=S.cap.closed,reg=register(open,closed),SC=4;
+  var cC=imgToCanvas(closed),cO=imgToCanvas(open),cA=shifted(closed,reg.dx,reg.dy);
+  var d0=diffCanvas(cO,cC,reg.mask),d1=diffCanvas(cO,cA,reg.mask);
+  lead.textContent='Frames registered. Running bicubic and the super-resolution network (first run downloads a 1 MB model)...';
+  var openLR=open,alignedImg=cA.getContext('2d').getImageData(0,0,cA.width,cA.height);
+  var bO=imgToCanvas(bicubicUp(openLR,SC)),bC=imgToCanvas(bicubicUp(alignedImg,SC));
+  var sO=await srUp(cO),sC=await srUp(cA);
+  lead.textContent='Both eye photos were cut out with the same landmark-based crop, then the closed one was registered onto the open one using only the skin around the eye. The two methods below upscale the same low resolution pixels four times.';
+  var g=document.createElement('div');g.className='rgrid';
+  function nn(c){var o=document.createElement('canvas');o.width=c.width*SC;o.height=c.height*SC;var x=o.getContext('2d');x.imageSmoothingEnabled=false;x.drawImage(c,0,0,o.width,o.height);return o}
+  g.appendChild(tile(nn(cO),'<b>Open, original</b><br>'+cO.width+'x'+cO.height+' px, nearest neighbour','px'));
+  g.appendChild(tile(bO,'<b>Open, bicubic x4</b><br>sharpness '+sharp(bO).toFixed(0)+' &nbsp; consistency '+consist(bO,openLR,SC).toFixed(1)+' dB'));
+  g.appendChild(tile(sO,'<b>Open, super-resolution x4</b><br>sharpness '+sharp(sO).toFixed(0)+' &nbsp; consistency '+consist(sO,openLR,SC).toFixed(1)+' dB'));
+  g.appendChild(tile(nn(cA),'<b>Closed, registered</b><br>shift dx '+reg.dx.toFixed(2)+' px, dy '+reg.dy.toFixed(2)+' px','px'));
+  g.appendChild(tile(bC,'<b>Closed, bicubic x4</b><br>sharpness '+sharp(bC).toFixed(0)+' &nbsp; consistency '+consist(bC,alignedImg,SC).toFixed(1)+' dB'));
+  g.appendChild(tile(sC,'<b>Closed, super-resolution x4</b><br>sharpness '+sharp(sC).toFixed(0)+' &nbsp; consistency '+consist(sC,alignedImg,SC).toFixed(1)+' dB'));
+  body.appendChild(g);
+  var h1=document.createElement('h3');h1.className='rsec';h1.textContent='Co-registration of open and closed';body.appendChild(h1);
+  var g2=document.createElement('div');g2.className='rgrid';
+  g2.appendChild(tile(nn(d0.cv),'<b>Difference before</b><br>mean abs diff around the eye '+d0.mad.toFixed(1)+' of 255<br>correlation '+reg.ncc0.toFixed(3),'px'));
+  g2.appendChild(tile(nn(d1.cv),'<b>Difference after</b><br>mean abs diff '+d1.mad.toFixed(1)+' of 255<br>correlation '+reg.ncc.toFixed(3),'px'));
+  var info=document.createElement('div');info.className='tile';info.innerHTML='<p style="margin:2px"><b>How it works</b><br>The eye corners from the face tracker give a first alignment (rotation, scale, position). The remaining shift is found by normalized cross-correlation on a blurred copy, searching +-8 px and refining to a fraction of a pixel. Pixels inside the eye opening are ignored, because the lid changes them.</p>';g2.appendChild(info);body.appendChild(g2);
+  var h2=document.createElement('h3');h2.className='rsec';h2.textContent='Final image: open to closed';body.appendChild(h2);
+  var fin=document.createElement('div');fin.className='final';var fc=document.createElement('canvas');fc.width=sO.width;fc.height=sO.height;
+  fin.innerHTML='<div class="seg"><button class="on" data-m="sr">Super-resolution</button><button data-m="bi">Bicubic</button><button id="savebtn" class="ghost" style="margin-left:auto">Save PNG</button></div>';fin.appendChild(fc);
+  var sl=document.createElement('input');sl.type='range';sl.min=0;sl.max=100;sl.value=0;sl.setAttribute('aria-label','Open to closed');fin.appendChild(sl);
+  var lab=document.createElement('div');lab.className='lab';lab.innerHTML='<span>open</span><span>closed, registered</span>';fin.appendChild(lab);body.appendChild(fin);
+  var mode='sr';function paint(){var a=mode==='sr'?sO:bO,b=mode==='sr'?sC:bC,x=fc.getContext('2d');x.globalAlpha=1;x.drawImage(a,0,0);x.globalAlpha=sl.value/100;x.drawImage(b,0,0);x.globalAlpha=1}
+  sl.addEventListener('input',paint);fin.querySelectorAll('[data-m]').forEach(function(bt){bt.addEventListener('click',function(){mode=bt.dataset.m;fin.querySelectorAll('[data-m]').forEach(function(q){q.classList.toggle('on',q===bt)});paint()})});
+  fin.querySelector('#savebtn').addEventListener('click',function(){fc.toBlob(function(bl){var u=URL.createObjectURL(bl),a=document.createElement('a');a.href=u;a.download='eye-open-to-closed.png';a.click();setTimeout(function(){URL.revokeObjectURL(u)},2000)})});
+  paint();
+  var note=document.createElement('p');note.className='lead';note.style.marginTop='18px';note.innerHTML='Sharpness is the variance of the Laplacian, and consistency is the PSNR between the output shrunk back by 4 and the original pixels. They tell you how crisp and how faithful each result is, not which one is closer to a real high resolution photo, because there is none. The network is a small ESRGAN-style model trained on generic photos (DIV2K), not on eyes, so fine details such as eyelashes are partly invented. Bicubic only interpolates.';body.appendChild(note);
+ }catch(e){lead.textContent='Something failed: '+(e&&e.message?e.message:e)}}
+$('#dev').addEventListener('click',develop);$('#rclose').addEventListener('click',function(){$('#result').hidden=true});
+window.__ehs={S:S,develop:develop,cropEye:cropEye,register:register,bicubicUp:bicubicUp};
+
+/* ---------- drawing ---------- */
+function px(x,y,sc,ox,oy){return [(1-x)*S.vw*sc+ox,y*S.vh*sc+oy]}
+function strokePoly(lm,idx,sc,ox,oy,close){cx.beginPath();idx.forEach(function(i,k){var p=px(lm[i].x,lm[i].y,sc,ox,oy);k?cx.lineTo(p[0],p[1]):cx.moveTo(p[0],p[1])});if(close)cx.closePath();cx.stroke()}
+function draw(){cx.fillStyle='#070708';cx.fillRect(0,0,W,H);
+ var sc=Math.max(W/S.vw,H/S.vh),ox=(W-S.vw*sc)/2,oy=(H-S.vh*sc)/2;
+ if(S.mode==='cam'&&video.readyState>=2){cx.save();cx.translate(W,0);cx.scale(-1,1);try{cx.filter='grayscale(1) brightness(.5) contrast(1.15)'}catch(e){}cx.drawImage(video,W-(ox+S.vw*sc),oy,S.vw*sc,S.vh*sc);cx.restore();cx.filter='none'}
+ else{/* idle backdrop: slow concentric lines */var t=performance.now()/1000;cx.strokeStyle='rgba(200,200,205,.07)';cx.lineWidth=1;for(var i=0;i<14;i++){var r=((t*.05+i/14)%1)*Math.max(W,H)*.8;cx.beginPath();cx.arc(W/2,H*.45,r,0,6.283);cx.stroke()}}
+ /* face */
+ if(S.mode==='cam'&&S.lm){var lm=S.lm;cx.lineWidth=2;cx.strokeStyle=S.closed?'#ffffff':'rgba(235,235,240,.8)';strokePoly(lm,RE,sc,ox,oy,true);strokePoly(lm,LE,sc,ox,oy,true);
+  if(lm.length>477&&!S.closed){[468,473].forEach(function(c){var p=px(lm[c].x,lm[c].y,sc,ox,oy),e=px(lm[c+1].x,lm[c+1].y,sc,ox,oy),r=Math.hypot(p[0]-e[0],p[1]-e[1]);cx.beginPath();cx.arc(p[0],p[1],r,0,6.283);cx.stroke();cx.fillStyle='#fff';cx.beginPath();cx.arc(p[0],p[1],Math.max(2,r*.28),0,6.283);cx.fill();
+   if(S.gate){cx.strokeStyle='rgba(255,255,255,.6)';cx.beginPath();cx.moveTo(p[0],p[1]);cx.lineTo(p[0]-S.gx*r*9,p[1]-S.gy*r*9);cx.stroke();cx.strokeStyle='#fff'}})}}
+ /* hands */
+ if(S.mode==='cam'){S.hands.forEach(function(h,hi){cx.lineWidth=2;cx.strokeStyle='rgba(235,235,240,.85)';HC.forEach(function(c){var a=px(h[c[0]].x,h[c[0]].y,sc,ox,oy),b=px(h[c[1]].x,h[c[1]].y,sc,ox,oy);cx.beginPath();cx.moveTo(a[0],a[1]);cx.lineTo(b[0],b[1]);cx.stroke()});
+  h.forEach(function(p,i){var q=px(p.x,p.y,sc,ox,oy);cx.fillStyle=(i===4||i===8)?'#fff':'rgba(235,235,240,.7)';cx.beginPath();cx.arc(q[0],q[1],(i===4||i===8)?6:3,0,6.283);cx.fill()});
+  if(hi===0){var a=px(h[4].x,h[4].y,sc,ox,oy),b=px(h[8].x,h[8].y,sc,ox,oy);cx.setLineDash([4,6]);cx.strokeStyle='#fff';cx.beginPath();cx.moveTo(a[0],a[1]);cx.lineTo(b[0],b[1]);cx.stroke();cx.setLineDash([]);cx.fillStyle='#fff';cx.font='13px "Share Tech Mono",monospace';cx.fillText(Math.round(S.cutoff)+' Hz',(a[0]+b[0])/2+10,(a[1]+b[1])/2)}})}
+ /* tracking readout: capture window, iris trail, blink graph */
+ if(S.mode==='cam'&&S.face){var cc=cropCornersScreen(sc,ox,oy);if(cc){cx.strokeStyle='rgba(255,255,255,.6)';cx.setLineDash([6,5]);cx.lineWidth=1.5;cx.beginPath();cc.forEach(function(p,i){i?cx.lineTo(p[0],p[1]):cx.moveTo(p[0],p[1])});cx.closePath();cx.stroke();cx.setLineDash([]);cx.fillStyle='rgba(255,255,255,.85)';cx.font='11px "Share Tech Mono",monospace';cx.textAlign='left';cx.fillText('eye window '+CROP.OW+'x'+CROP.OH+' px',cc[0][0],cc[0][1]-6)}
+  S.trail.forEach(function(p,i){var q=px(p[0],p[1],sc,ox,oy);cx.fillStyle='rgba(255,255,255,'+(i/S.trail.length*.6).toFixed(2)+')';cx.fillRect(q[0]-1.5,q[1]-1.5,3,3)});
+  var gx0=Math.max(16,0)+0,gy0=H-136,gw=170,gh=46;cx.strokeStyle='rgba(235,235,240,.4)';cx.lineWidth=1;cx.strokeRect(gx0,gy0,gw,gh);cx.fillStyle='rgba(235,235,240,.6)';cx.font='10px "Share Tech Mono",monospace';cx.fillText('EYE OPENNESS',gx0,gy0-5);
+  var thY=gy0+gh-(.6/1.3)*gh;cx.setLineDash([3,4]);cx.beginPath();cx.moveTo(gx0,thY);cx.lineTo(gx0+gw,thY);cx.stroke();cx.setLineDash([]);
+  cx.strokeStyle='#fff';cx.lineWidth=1.5;cx.beginPath();S.earHist.forEach(function(v,i){var x=gx0+i/160*gw,y=gy0+gh-Math.min(1.3,v)/1.3*gh;i?cx.lineTo(x,y):cx.moveTo(x,y)});cx.stroke()}
+ /* pulses */
+ rings=rings.filter(function(r){r.r+=r.v;r.v*=.985;r.a-=.014;if(r.a<=0)return false;cx.strokeStyle='rgba(255,255,255,'+r.a+')';cx.lineWidth=3+r.a*6;cx.beginPath();cx.arc(r.x,r.y,r.r,0,6.283);cx.stroke();return true});
+ slashes=slashes.filter(function(s){s.l-=.03;if(s.l<=0)return false;cx.fillStyle='rgba(255,255,255,'+s.l+')';cx.fillRect(0,s.y,W,s.h);return true});
+ if(S.flash>0){cx.fillStyle='rgba(255,255,255,'+S.flash*.35+')';cx.fillRect(0,0,W,H);S.flash-=.07}
+ if(S.snFlash>0){cx.fillStyle='rgba(200,200,205,'+S.snFlash*.18+')';cx.fillRect(0,0,W,H);S.snFlash-=.08}
+ /* oscilloscope */
+ if(ana&&S.mode!=='idle'){var buf=new Uint8Array(ana.fftSize);ana.getByteTimeDomainData(buf);cx.strokeStyle='rgba(255,255,255,.85)';cx.lineWidth=2;cx.beginPath();for(var i=0;i<buf.length;i++){var x=i/buf.length*W,y=H*.86+(buf[i]-128)/128*H*.1;i?cx.lineTo(x,y):cx.moveTo(x,y)}cx.stroke()}
+ /* compass */
+ if(S.mode!=='idle'){var R=Math.min(70,Math.min(W,H)*.12),cx0=W-R-26-0,cy0=H-R-70;cx.lineWidth=1.5;cx.strokeStyle='rgba(235,235,240,.5)';cx.beginPath();cx.arc(cx0,cy0,R,0,6.283);cx.stroke();
+  for(var s=0;s<8;s++){var a=s*.7854,x1=cx0+Math.sin(a)*R*.62,y1=cy0-Math.cos(a)*R*.62,x2=cx0+Math.sin(a)*R,y2=cy0-Math.cos(a)*R;cx.strokeStyle=s===S.sector?'#fff':'rgba(235,235,240,.35)';cx.lineWidth=s===S.sector?4:1.5;cx.beginPath();cx.moveTo(x1,y1);cx.lineTo(x2,y2);cx.stroke();cx.fillStyle=s===S.sector?'#fff':'rgba(235,235,240,.55)';cx.font='11px "Share Tech Mono",monospace';cx.textAlign='center';cx.fillText(NAMES[s],cx0+Math.sin(a)*(R+16),cy0-Math.cos(a)*(R+16)+4)}
+  cx.textAlign='left';cx.fillStyle='#fff';cx.beginPath();cx.arc(cx0+S.gx*R*.8,cy0-S.gy*R*.8,5,0,6.283);cx.fill()}
+ /* status */
+ var st=$('#status');if(S.mode==='idle')st.textContent='';else st.innerHTML='eyes <b>'+(S.closed?'closed':'open')+'</b> &nbsp; note <b>'+(S.sector>=0?NAMES[S.sector]:'-')+'</b> &nbsp; fingers <b>'+S.fingers+'</b> &nbsp; filter <b>'+Math.round(S.cutoff)+' Hz</b>'+(S.mode==='cam'&&!S.face?' &nbsp; <b>no face found</b>':'');
+ requestAnimationFrame(draw)}
+requestAnimationFrame(draw);
+})();
+</script>
+</body>
+</html>
