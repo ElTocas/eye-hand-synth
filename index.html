@@ -38,7 +38,7 @@ button:focus-visible{outline:2px dashed #fff;outline-offset:3px}
 #help>button{padding:6px 10px;font-size:11px;letter-spacing:.14em;text-transform:uppercase}
 #hbody{width:100%;background:rgba(7,7,8,.92);border:1px solid #5a5a62;max-height:calc(100vh - 200px);overflow:auto}
 #hbody[hidden]{display:none}
-.hr[data-k=drumR],.hr[data-k=drumL]{display:none}body.drum .hr[data-k=drumR],body.drum .hr[data-k=drumL]{display:block}body.drum .hr[data-k=right],body.drum .hr[data-k=left]{display:none}
+.hr[data-k=drumR],.hr[data-k=drumL]{display:none}body.drum .hr[data-k=drumR],body.drum .hr[data-k=drumL]{display:block}body.drumonly .hr:not([data-k^=drum]){display:none}body.drum .hr[data-k=right],body.drum .hr[data-k=left]{display:none}
 .hr{padding:6px 10px;border-bottom:1px solid #34343a;border-left:2px solid transparent;font-size:11px;line-height:1.4}
 .hr:last-child{border-bottom:0}
 .hr b{display:flex;align-items:center;gap:6px;color:#fff;font-weight:400;letter-spacing:.1em;text-transform:uppercase;font-size:11px}
@@ -95,7 +95,7 @@ button:focus-visible{outline:2px dashed #fff;outline-offset:3px}
   <h1>Eye Hand Synth</h1>
   <p class="sub">An instrument you play with your face</p>
   <dl id="dl0"></dl>
-  <div class="row"><button id="go">Open camera</button><button class="ghost" id="demo">Play with the mouse</button></div>
+  <div class="row"><button id="go">Open camera</button><button class="ghost" id="godrum">Drum mode, arms only</button><button class="ghost" id="demo">Play with the mouse</button></div>
   <p id="err"></p>
   <p class="note">Blink once with a hand-held steady face and the page also keeps two small eye photos, one open and one closed. Press Develop to register them and compare bicubic upscaling with a super-resolution network. Your video never leaves this page. Face and hand tracking run locally in your browser, nothing is recorded or uploaded. Use headphones, and keep your face and hand well lit. Mouse mode: move to look, click to blink, space for snare, keys 1 to 5 for fingers, arrow up and down for the filter.</p>
  </div>
@@ -249,7 +249,8 @@ function onHands(res){var hs=res.multiHandLandmarks||[],hd=res.multiHandedness||
 /* ---------- camera loop ---------- */
 var video=document.createElement('video');video.playsInline=true;video.muted=true;video.setAttribute('playsinline','');video.setAttribute('muted','');video.style.cssText='position:fixed;left:0;top:0;width:2px;height:2px;opacity:.01;pointer-events:none';document.body.appendChild(video);var starting=false;var STAGE='';
 var face=null,hands=null,stream=null,running=false;
-async function startCam(){if(starting||running)return;starting=true;if(location.protocol==='file:'){$('#err').textContent='Open this page through a local server (python3 -m http.server) or GitHub Pages, not by double-clicking the file: the models cannot load from file://.';starting=false;return}var err=$('#err');err.textContent='';
+var DRUMONLY=false;
+async function startCam(dOnly){if(starting||running)return;starting=true;DRUMONLY=dOnly===true;if(location.protocol==='file:'){$('#err').textContent='Open this page through a local server (python3 -m http.server) or GitHub Pages, not by double-clicking the file: the models cannot load from file://.';starting=false;return}var err=$('#err');err.textContent='';
  if(!navigator.mediaDevices||!navigator.mediaDevices.getUserMedia){err.textContent='This browser has no camera access. Try the mouse mode.';return}
  try{initAudio();if(ac.state==='suspended')ac.resume();
   try{stream=await navigator.mediaDevices.getUserMedia({video:{width:{ideal:1920},height:{ideal:1080},facingMode:'user'},audio:false})}
@@ -259,17 +260,18 @@ async function startCam(){if(starting||running)return;starting=true;if(location.
   for(var k=0;k<4;k++){try{await video.play();break}catch(e1){if(k==3)throw e1;await new Promise(function(r){setTimeout(r,300)})}}
   for(var w=0;w<30&&!video.videoWidth;w++)await new Promise(function(r){setTimeout(r,100)});S.vw=video.videoWidth||1280;S.vh=video.videoHeight||720;
   $('#go').textContent='Loading models';
-  face=new FaceMesh({locateFile:function(f){return 'vendor/face_mesh/'+f}});face.setOptions({maxNumFaces:1,refineLandmarks:true,minDetectionConfidence:.5,minTrackingConfidence:.5});face.onResults(onFace);
-  STAGE='face init';await face.initialize();STAGE='face first frame';try{await face.send({image:video})}catch(e){}
-  try{await new Promise(function(ok,ko){var sc=document.createElement('script');sc.src='vendor/hands/hands.js';sc.onload=ok;sc.onerror=ko;document.head.appendChild(sc)});
-   hands=new Hands({locateFile:function(f){return 'vendor/hands/'+f}});hands.setOptions({maxNumHands:2,modelComplexity:0,minDetectionConfidence:.6,minTrackingConfidence:.5});hands.onResults(onHands);await hands.initialize()}
+  if(!DRUMONLY&&!face){face=new FaceMesh({locateFile:function(f){return 'vendor/face_mesh/'+f}});face.setOptions({maxNumFaces:1,refineLandmarks:true,minDetectionConfidence:.5,minTrackingConfidence:.5});face.onResults(onFace);
+  STAGE='face init';await face.initialize();STAGE='face first frame';try{await face.send({image:video})}catch(e){}}
+  try{if(!hands)await new Promise(function(ok,ko){var sc=document.createElement('script');sc.src='vendor/hands/hands.js';sc.onload=ok;sc.onerror=ko;document.head.appendChild(sc)});
+   if(!hands){hands=new Hands({locateFile:function(f){return 'vendor/hands/'+f}});hands.setOptions({maxNumHands:2,modelComplexity:0,minDetectionConfidence:.6,minTrackingConfidence:.5});hands.onResults(onHands);await hands.initialize()}}
   catch(e){hands=null;console.warn('hands unavailable',e);err.textContent='Hand tracking could not start ('+(e&&e.message||e)+'). Eyes only: use mouse keys for snare.'}
-  S.mode='cam';running=true;$('#panel').hidden=true;$('#tools').hidden=false;applyVoice();loop()}
+  S.mode='cam';running=true;$('#panel').hidden=true;$('#tools').hidden=false;
+  DR.on=DRUMONLY;DR.cool=DRUMONLY?90:180;document.body.classList.toggle('drum',DRUMONLY);document.body.classList.toggle('drumonly',DRUMONLY);$('#drum').hidden=DRUMONLY;$('#recenter').hidden=DRUMONLY;$('#drum').textContent='Drum mode: '+(DRUMONLY?'on':'off');applyVoice();loop()}
  catch(e){err.textContent=(e&&e.name==='NotAllowedError')?'Camera permission was denied. Allow it in the address bar, or use the mouse mode.':'Could not start ['+STAGE+' | '+location.protocol+' | '+navigator.userAgent.slice(-60)+']: '+(e&&e.message?e.message:e)+' '+String(e&&e.stack||'').split('\n').slice(0,3).join(' / ');$('#go').textContent='Open camera'}
  starting=false}
-async function loop(){if(!running)return;if(video.readyState>=2){try{await face.send({image:video});if(hands)await hands.send({image:video})}catch(e){}}requestAnimationFrame(loop)}
-function stopAll(){running=false;stopSeq();HS.R.deg=HS.L.deg=0;if(stream)stream.getTracks().forEach(function(t){t.stop()});stream=null;gate(false);S.mode='idle';S.gate=false;S.sector=-1;S.lm=null;S.hands=[];$('#panel').hidden=false;$('#tools').hidden=true;$('#go').textContent='Open camera'}
-$('#go').addEventListener('click',startCam);
+async function loop(){if(!running)return;if(video.readyState>=2){try{if(face&&!DRUMONLY)await face.send({image:video});if(hands)await hands.send({image:video})}catch(e){}}requestAnimationFrame(loop)}
+function stopAll(){running=false;stopSeq();HS.R.deg=HS.L.deg=0;if(stream)stream.getTracks().forEach(function(t){t.stop()});stream=null;gate(false);S.mode='idle';S.gate=false;S.sector=-1;S.lm=null;S.hands=[];DR.on=false;DR.cool=180;DRUMONLY=false;document.body.classList.remove('drum','drumonly');$('#drum').hidden=false;$('#recenter').hidden=false;$('#drum').textContent='Drum mode: off';$('#panel').hidden=false;$('#tools').hidden=true;$('#go').textContent='Open camera'}
+$('#go').addEventListener('click',function(){startCam(false)});$('#godrum').addEventListener('click',function(){startCam(true)});
 $('#stop').addEventListener('click',stopAll);
 $('#recenter').addEventListener('click',recenter);
 
@@ -500,7 +502,7 @@ function draw(){cx.fillStyle='#070708';cx.fillRect(0,0,W,H);
  /* hands */
  if(S.mode==='cam'){S.hands.forEach(function(h,hi){cx.lineWidth=2;cx.strokeStyle='rgba(235,235,240,.85)';HC.forEach(function(c){var a=px(h[c[0]].x,h[c[0]].y,sc,ox,oy),b=px(h[c[1]].x,h[c[1]].y,sc,ox,oy);cx.beginPath();cx.moveTo(a[0],a[1]);cx.lineTo(b[0],b[1]);cx.stroke()});
   h.forEach(function(p,i){var q=px(p.x,p.y,sc,ox,oy);cx.fillStyle=(i===4||i===8)?'#fff':'rgba(235,235,240,.7)';cx.beginPath();cx.arc(q[0],q[1],(i===4||i===8)?6:3,0,6.283);cx.fill()});
-  var sd2=(S.handSide||[])[hi];var wp=px(h[0].x,h[0].y,sc,ox,oy);cx.fillStyle='#fff';cx.font='13px "Share Tech Mono",monospace';cx.textAlign='center';cx.fillText(sd2==='R'?'RIGHT':'LEFT',wp[0],wp[1]+22);var ac2=HS[sd2]?HS[sd2].acid:0;cx.fillStyle='rgba(255,255,255,.25)';cx.fillRect(wp[0]-40,wp[1]+30,80,6);cx.fillStyle='#fff';cx.fillRect(wp[0]-40,wp[1]+30,80*ac2,6);cx.font='11px "Share Tech Mono",monospace';cx.fillText('ACID',wp[0],wp[1]+50);if(S.hands.length===1||sd2==='L'){var a=px(h[4].x,h[4].y,sc,ox,oy),b=px(h[8].x,h[8].y,sc,ox,oy);cx.setLineDash([4,6]);cx.strokeStyle='#fff';cx.beginPath();cx.moveTo(a[0],a[1]);cx.lineTo(b[0],b[1]);cx.stroke();cx.setLineDash([]);cx.fillStyle='#fff';cx.font='13px "Share Tech Mono",monospace';cx.fillText(Math.round(S.cutoff)+' Hz',(a[0]+b[0])/2+10,(a[1]+b[1])/2)}})}
+  var sd2=(S.handSide||[])[hi];var wp=px(h[0].x,h[0].y,sc,ox,oy);cx.fillStyle='#fff';cx.font='13px "Share Tech Mono",monospace';cx.textAlign='center';cx.fillText(sd2==='R'?'RIGHT':'LEFT',wp[0],wp[1]+22);if(DR.on){cx.font='15px "Share Tech Mono",monospace';cx.fillText(sd2==='R'?'KICK':'SNARE',wp[0],wp[1]+44)}else{var ac2=HS[sd2]?HS[sd2].acid:0;cx.fillStyle='rgba(255,255,255,.25)';cx.fillRect(wp[0]-40,wp[1]+30,80,6);cx.fillStyle='#fff';cx.fillRect(wp[0]-40,wp[1]+30,80*ac2,6);cx.font='11px "Share Tech Mono",monospace';cx.fillText('ACID',wp[0],wp[1]+50)}if(!DR.on&&(S.hands.length===1||sd2==='L')){var a=px(h[4].x,h[4].y,sc,ox,oy),b=px(h[8].x,h[8].y,sc,ox,oy);cx.setLineDash([4,6]);cx.strokeStyle='#fff';cx.beginPath();cx.moveTo(a[0],a[1]);cx.lineTo(b[0],b[1]);cx.stroke();cx.setLineDash([]);cx.fillStyle='#fff';cx.font='13px "Share Tech Mono",monospace';cx.fillText(Math.round(S.cutoff)+' Hz',(a[0]+b[0])/2+10,(a[1]+b[1])/2)}})}
  cx.shadowBlur=0;
  /* tracking readout: capture window, iris trail, blink graph */
  if(S.mode==='cam'&&S.face){['R','L'].forEach(function(sd){var cc=cropCornersScreen(sc,ox,oy,sd);if(cc){cx.strokeStyle='rgba(255,255,255,.6)';cx.setLineDash([6,5]);cx.lineWidth=1.5;cx.beginPath();cc.forEach(function(p,i){i?cx.lineTo(p[0],p[1]):cx.moveTo(p[0],p[1])});cx.closePath();cx.stroke();cx.setLineDash([]);cx.fillStyle='rgba(255,255,255,.85)';cx.font='11px "Share Tech Mono",monospace';cx.textAlign='left';cx.fillText((sd==='R'?'right':'left')+' eye '+CROP.OW+'x'+CROP.OH+' px',Math.min(cc[0][0],cc[1][0]),Math.min(cc[0][1],cc[1][1])-6)}})
@@ -516,12 +518,12 @@ function draw(){cx.fillStyle='#070708';cx.fillRect(0,0,W,H);
  /* oscilloscope */
  if(ana&&S.mode!=='idle'){var buf=new Uint8Array(ana.fftSize);ana.getByteTimeDomainData(buf);cx.strokeStyle='rgba(255,255,255,.85)';cx.lineWidth=2;cx.beginPath();for(var i=0;i<buf.length;i++){var x=i/buf.length*W,y=H*.86+(buf[i]-128)/128*H*.1;i?cx.lineTo(x,y):cx.moveTo(x,y)}cx.stroke()}
  /* compass */
- if(S.mode!=='idle'){var R=Math.min(70,Math.min(W,H)*.12),cx0=W-R-26-0,cy0=H-R-70;cx.lineWidth=1.5;cx.strokeStyle='rgba(235,235,240,.5)';cx.beginPath();cx.arc(cx0,cy0,R,0,6.283);cx.stroke();
+ if(S.mode!=='idle'&&!DRUMONLY){var R=Math.min(70,Math.min(W,H)*.12),cx0=W-R-26-0,cy0=H-R-70;cx.lineWidth=1.5;cx.strokeStyle='rgba(235,235,240,.5)';cx.beginPath();cx.arc(cx0,cy0,R,0,6.283);cx.stroke();
   for(var s=0;s<8;s++){var a=s*.7854,x1=cx0+Math.sin(a)*R*.62,y1=cy0-Math.cos(a)*R*.62,x2=cx0+Math.sin(a)*R,y2=cy0-Math.cos(a)*R;cx.strokeStyle=s===S.sector?'#fff':'rgba(235,235,240,.35)';cx.lineWidth=s===S.sector?4:1.5;cx.beginPath();cx.moveTo(x1,y1);cx.lineTo(x2,y2);cx.stroke();cx.fillStyle=s===S.sector?'#fff':'rgba(235,235,240,.55)';cx.font='11px "Share Tech Mono",monospace';cx.textAlign='center';cx.fillText(NAMES[s],cx0+Math.sin(a)*(R+16),cy0-Math.cos(a)*(R+16)+4)}
   cx.textAlign='left';cx.fillStyle='#fff';cx.beginPath();cx.arc(cx0+S.gx*R*.8,cy0-S.gy*R*.8,5,0,6.283);cx.fill()}
  /* status */
  $('#help').hidden=(S.mode==='idle');
- var st=$('#status');if(S.mode==='idle')st.textContent='';else st.innerHTML='eyes <b>'+(S.closed?'closed':'open')+'</b> &nbsp; note <b>'+(S.sector>=0?NAMES[S.sector]:'-')+'</b> &nbsp; right hand <b>'+HS.R.deg+'</b> acid <b>'+Math.round(HS.R.acid*100)+'%</b> &nbsp; left hand <b>'+HS.L.deg+'</b> acid <b>'+Math.round(HS.L.acid*100)+'%</b>'+(S.mode==='cam'&&!S.face?' &nbsp; <b>no face found</b>':'')+(S.mode==='cam'&&S.face&&S.eyePx?' &nbsp; eye <b>'+Math.round(S.eyePx)+' px</b> wide'+(S.eyePx<75?' <b>too small, move closer</b>':''):'');
+ var st=$('#status');if(S.mode==='idle')st.textContent='';else if(DRUMONLY)st.innerHTML='drum mode &nbsp; hands seen <b>'+S.hands.length+'</b> &nbsp; right arm <b>kick</b> &nbsp; left arm <b>snare</b>';else st.innerHTML='eyes <b>'+(S.closed?'closed':'open')+'</b> &nbsp; note <b>'+(S.sector>=0?NAMES[S.sector]:'-')+'</b> &nbsp; right hand <b>'+HS.R.deg+'</b> acid <b>'+Math.round(HS.R.acid*100)+'%</b> &nbsp; left hand <b>'+HS.L.deg+'</b> acid <b>'+Math.round(HS.L.acid*100)+'%</b>'+(S.mode==='cam'&&!S.face&&!DRUMONLY?' &nbsp; <b>no face found</b>':'')+(S.mode==='cam'&&S.face&&S.eyePx?' &nbsp; eye <b>'+Math.round(S.eyePx)+' px</b> wide'+(S.eyePx<75?' <b>too small, move closer</b>':''):'');
  requestAnimationFrame(draw)}
 requestAnimationFrame(draw);
 })();
